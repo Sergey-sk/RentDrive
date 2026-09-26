@@ -17,14 +17,16 @@ namespace RentDrive.services.implementations
             _fileService = fileService;
         }
 
-        public async Task<List<RentItemDto>> GetItemsAsync(int page, int pageSize, IWebHostEnvironment env)
+        public async Task<List<RentItemDto>> GetItemsAsync(int page, int pageSize, SortParams sortParams, IWebHostEnvironment env)
         {
-            var itemsDto = await _context.RentItems
+            var sourceItems = await _context.RentItems
                 .Include(ri => ri.Owner)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(ri => RentItemDto.ToDto(ri))
                 .ToListAsync();
+
+            var itemsDto = GetSortedList(sourceItems, sortParams);
 
             var wwwrootPath = env.WebRootPath;
 
@@ -97,17 +99,17 @@ namespace RentDrive.services.implementations
             if (item.OwnerId != ownerId && !isAdminOrModer)
                 throw new UnauthorizedAccessException("Нет прав на редактирование этого объекта");
 
-            if (editDto.Title != null) item.Title = editDto.Title;
-            if (editDto.Description != null) item.Description = editDto.Description;
+            if (!string.IsNullOrWhiteSpace(editDto.Title)) item.Title = editDto.Title;
+            if (!string.IsNullOrWhiteSpace(editDto.Description)) item.Description = editDto.Description;
             if (editDto.PricePerDay != null) item.PricePerDay = (decimal)editDto.PricePerDay;
 
             var imagesToRemove = item.ImageUrls.Except(editDto.KeepImageUrls).ToList();
-            if(imagesToRemove.Count > 0)
+            if (imagesToRemove.Count > 0)
                 _fileService.RemoveImage(imagesToRemove);
 
             var finalImageUrls = item.ImageUrls.Intersect(editDto.KeepImageUrls).ToList();
 
-            if(editDto.NewImageFiles != null && editDto.NewImageFiles.Count > 0)
+            if (editDto.NewImageFiles != null && editDto.NewImageFiles.Count > 0)
             {
                 var newPaths = await _fileService.SaveImageAsync(editDto.NewImageFiles);
                 finalImageUrls.AddRange(newPaths);
@@ -120,7 +122,7 @@ namespace RentDrive.services.implementations
             return RentItemDto.ToDto(item);
         }
 
-        public async Task<bool> RemoveItemByIdAsync(int id, string ownerId, bool isAdminOrModer = true)
+        public async Task<bool> RemoveItemByIdAsync(int id, string ownerId, bool isAdminOrModer)
         {
             List<string>? imgUrl = await _context.RentItems
                 .Where(ri => ri.Id == id)
@@ -140,6 +142,36 @@ namespace RentDrive.services.implementations
             return await _context.RentItems
                 .Where(ri => ri.Id == id && ri.OwnerId == ownerId)
                 .ExecuteDeleteAsync() != 0;
+        }
+
+        public async Task<bool> RemoveItemsAsync(string ownerId)
+        {
+            return await _context.RentItems
+                .Where(i => i.OwnerId == ownerId)
+                .ExecuteDeleteAsync() != 0;
+        }
+
+        private List<RentItemDto> GetSortedList(List<RentItemDto> source, SortParams sortParams)
+        {
+            var query = source.Where(i => i.Title.Contains(sortParams.Search ?? string.Empty, StringComparison.OrdinalIgnoreCase) ||
+                                    i.Description.Contains(sortParams.Search ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+
+            bool isDesc = sortParams.SortDirection?.ToLower() == "desc";
+
+            return sortParams.SortBy?.ToLower() switch
+            {
+                "id" => isDesc ? query.OrderByDescending(i => i.Id).ToList()
+                               : query.OrderBy(i => i.Id).ToList(),
+
+                "title" => isDesc ? query.OrderByDescending(i => i.Title).ToList()
+                                  : query.OrderBy(i => i.Title).ToList(),
+
+                "priceperday" => isDesc ? query.OrderByDescending(i => i.PricePerDay).ToList()
+                                        : query.OrderBy(i => i.PricePerDay).ToList(),
+
+                _ => isDesc ? query.OrderByDescending(i => i.Title).ToList()
+                            : query.OrderBy(i => i.Title).ToList()
+            };
         }
     }
 }

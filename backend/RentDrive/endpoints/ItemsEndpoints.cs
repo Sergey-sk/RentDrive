@@ -18,9 +18,13 @@ namespace RentDrive.endpoints
             var itemsGroup = app.MapGroup("/items")
                 .WithTags("items");
 
-            itemsGroup.MapGet("/", async (IWebHostEnvironment env, IItemsService itemsService, int page = 1, int pageSize = 10) =>
+            itemsGroup.MapGet("/", async (IWebHostEnvironment env,
+                                    IItemsService itemsService,
+                                    [AsParameters] SortParams sortParams,
+                                    int page = 1,
+                                    int pageSize = 10) =>
             {
-                var items = await itemsService.GetItemsAsync(page, pageSize, env);
+                var items = await itemsService.GetItemsAsync(page, pageSize, sortParams, env);
 
                 return Results.Ok(items);
             });
@@ -36,7 +40,7 @@ namespace RentDrive.endpoints
             })
                 .WithName("GetItemById");
 
-            var createEndpoint = itemsGroup.MapPost("/create", async ([AsParameters] CreateRentItemDto createDto,
+            var createEndpoint = itemsGroup.MapPost("/", async ([AsParameters] CreateRentItemDto createDto,
                                                                       IItemsService itemsService,
                                                                       ClaimsPrincipal principal,
                                                                       UserManager<User> userManager) =>
@@ -56,7 +60,7 @@ namespace RentDrive.endpoints
                 createEndpoint.DisableAntiforgery();
             }
 
-            itemsGroup.MapPut("edit/{id}", async (int id,
+            itemsGroup.MapPut("/{id}", async (int id,
                                             [FromForm] EditItemDto editDto,
                                             IItemsService itemsService,
                                             IWebHostEnvironment env,
@@ -82,7 +86,7 @@ namespace RentDrive.endpoints
                 }
             }).RequireAuthorization().DisableAntiforgery();
 
-            itemsGroup.MapDelete("/remove/{id}", async (int id, IItemsService itemsService, ClaimsPrincipal principal) =>
+            itemsGroup.MapDelete("/{id}", async (int id, IItemsService itemsService, ClaimsPrincipal principal) =>
             {
                 var ownerId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -94,6 +98,19 @@ namespace RentDrive.endpoints
                 var isRemoved = await itemsService.RemoveItemByIdAsync(id, ownerId, isAdminOrModer);
 
                 if (!isRemoved) return Results.BadRequest();
+
+                return Results.NoContent();
+            }).RequireAuthorization();
+
+            itemsGroup.MapDelete("/", async (IItemsService itemsService, ClaimsPrincipal principal) =>
+            {
+                var ownerId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                if (ownerId == null) return Results.Unauthorized();
+
+                var isSuccess = await itemsService.RemoveItemsAsync(ownerId);
+
+                if (!isSuccess) return Results.NotFound();
 
                 return Results.NoContent();
             }).RequireAuthorization();
