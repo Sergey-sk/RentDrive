@@ -26,7 +26,7 @@ namespace RentDrive.endpoints
             {
                 var items = await itemsService.GetItemsAsync(page, pageSize, sortParams, env);
 
-                return Results.Ok(items);
+                return Results.Ok(new { items = items, totalCount = items.Count, page = page, pageSize = pageSize });
             });
 
             itemsGroup.MapGet("/{id}", async (int id, IWebHostEnvironment env, IItemsService itemsService) =>

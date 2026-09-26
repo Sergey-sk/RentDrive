@@ -7,6 +7,7 @@
         public string Description { get; set; } = string.Empty;
         public decimal PricePerDay { get; set; }
         public List<string> ImageUrls { get; set; } = [];
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
 
         public string OwnerId { get; set; } = string.Empty;
         public User Owner { get; set; } = null!;

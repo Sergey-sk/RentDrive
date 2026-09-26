@@ -19,14 +19,16 @@ namespace RentDrive.services.implementations
 
         public async Task<List<RentItemDto>> GetItemsAsync(int page, int pageSize, SortParams sortParams, IWebHostEnvironment env)
         {
-            var sourceItems = await _context.RentItems
-                .Include(ri => ri.Owner)
+            var query = _context.RentItems.Include(i => i.Owner).AsQueryable();
+
+            query = GetSortedList(query, sortParams);
+
+            var pagedEntities = await query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(ri => RentItemDto.ToDto(ri))
                 .ToListAsync();
 
-            var itemsDto = GetSortedList(sourceItems, sortParams);
+            var itemsDto = pagedEntities.Select(i => RentItemDto.ToDto(i)).ToList();
 
             var wwwrootPath = env.WebRootPath;
 
@@ -151,26 +153,32 @@ namespace RentDrive.services.implementations
                 .ExecuteDeleteAsync() != 0;
         }
 
-        private List<RentItemDto> GetSortedList(List<RentItemDto> source, SortParams sortParams)
+        private IQueryable<RentItem> GetSortedList(IQueryable<RentItem> source, SortParams sortParams)
         {
-            var query = source.Where(i => i.Title.Contains(sortParams.Search ?? string.Empty, StringComparison.OrdinalIgnoreCase) ||
-                                    i.Description.Contains(sortParams.Search ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+            IQueryable<RentItem> query = source;
+
+            if(!string.IsNullOrWhiteSpace(sortParams.Search))
+                query = source.Where(i => i.Title.Contains(sortParams.Search) ||
+                                    i.Description.Contains(sortParams.Search));
 
             bool isDesc = sortParams.SortDirection?.ToLower() == "desc";
 
             return sortParams.SortBy?.ToLower() switch
             {
-                "id" => isDesc ? query.OrderByDescending(i => i.Id).ToList()
-                               : query.OrderBy(i => i.Id).ToList(),
+                "id" => isDesc ? query.OrderByDescending(i => i.Id)
+                               : query.OrderBy(i => i.Id),
 
-                "title" => isDesc ? query.OrderByDescending(i => i.Title).ToList()
-                                  : query.OrderBy(i => i.Title).ToList(),
+                "title" => isDesc ? query.OrderByDescending(i => i.Title)
+                                  : query.OrderBy(i => i.Title),
 
-                "priceperday" => isDesc ? query.OrderByDescending(i => i.PricePerDay).ToList()
-                                        : query.OrderBy(i => i.PricePerDay).ToList(),
+                "priceperday" => isDesc ? query.OrderByDescending(i => i.PricePerDay)
+                                        : query.OrderBy(i => i.PricePerDay),
 
-                _ => isDesc ? query.OrderByDescending(i => i.Title).ToList()
-                            : query.OrderBy(i => i.Title).ToList()
+                "created_at" or "createdat" => isDesc ? query.OrderByDescending(i => i.CreatedAt)
+                                                      : query.OrderBy(i => i.CreatedAt),
+
+                _ => isDesc ? query.OrderByDescending(i => i.Title)
+                            : query.OrderBy(i => i.Title)
             };
         }
     }
