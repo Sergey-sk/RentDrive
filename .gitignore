@@ -1,0 +1,15 @@
+[Bb]in/
+[Oo]bj/
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+[Ll]ogs/
+*.log
+
+backend/*/wwwroot/uploads/
+backend/*/wwwroot/images/items/
