@@ -2,7 +2,7 @@
 using RentDrive.db;
 using Serilog;
 
-namespace RentDrive
+namespace RentDrive.background
 {
     public class DatabaseImagesCleanupWorker : BackgroundService
     {
@@ -53,9 +53,12 @@ namespace RentDrive
                     }
 
                     if (isDbChanged)
+                    {
+                        _logger.Information("Проверка зваершена. Ссылки на несуществующие изображения удалены.");
                         await context.SaveChangesAsync();
-
-                    _logger.Information("Проверка завершена.");
+                    }
+                    else
+                        _logger.Information("Проверка завершена. Все изображения валидны.");
                 }
                 catch (Exception ex)
                 {

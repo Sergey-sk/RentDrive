@@ -3,6 +3,7 @@ using RentDrive.db;
 using RentDrive.db.models;
 using RentDrive.dto.itemsDto;
 using RentDrive.services.interfaces;
+using Serilog;
 
 namespace RentDrive.services.implementations
 {
@@ -11,6 +12,7 @@ namespace RentDrive.services.implementations
         private readonly ApplicationDbContext _context;
         private readonly IFileService _fileService;
         private readonly IFileDeleteQueue _deleteQueue;
+        private readonly Serilog.ILogger _logger = Log.ForContext<ItemsService>();
 
         public ItemsService(ApplicationDbContext context, IFileService fileService, IFileDeleteQueue deleteQueue)
         {
@@ -93,6 +95,7 @@ namespace RentDrive.services.implementations
             _context.RentItems.Add(entity);
             await _context.SaveChangesAsync();
 
+            _logger.Information("Объект с Id: {Id} успешно создан пользователем {UserId}", entity.Id, user.Id);
             return RentItemDto.ToDto(entity);
         }
 
@@ -127,6 +130,7 @@ namespace RentDrive.services.implementations
             _context.RentItems.Update(item);
             await _context.SaveChangesAsync();
 
+            _logger.Information("Объект с Id: {Id} успешно изменен пользователем {UserId}", item.Id, ownerId);
             return RentItemDto.ToDto(item);
         }
 
@@ -147,6 +151,7 @@ namespace RentDrive.services.implementations
             if (imagePaths != null && imagePaths.Count > 0)
                 _deleteQueue.Enqueue(imagePaths);
 
+            _logger.Information("Объект с Id: {Id} успешно удален пользователем {UserId}", id, ownerId);
             return true;
         }
 
@@ -165,6 +170,7 @@ namespace RentDrive.services.implementations
             if (isDeletionSuccessful)
                 _deleteQueue.Enqueue(imgUrls);
 
+            _logger.Information("Успешное удаление всех объектов у пользователя Id: {Id}", ownerId);
             return isDeletionSuccessful;
         }
 

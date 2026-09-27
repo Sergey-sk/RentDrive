@@ -2,7 +2,7 @@
 using RentDrive.services.interfaces;
 using Serilog;
 
-namespace RentDrive
+namespace RentDrive.background
 {
     public class FileDeleteWorker : BackgroundService
     {
