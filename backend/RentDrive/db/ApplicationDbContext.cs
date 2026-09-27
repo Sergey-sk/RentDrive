@@ -21,6 +21,21 @@ namespace RentDrive.db
                 .HasForeignKey(item => item.OwnerId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            builder.Entity<RentItem>()
+                .Property(i => i.Description)
+                .HasColumnType("longtext");
+
+            builder.Entity<RentItem>()
+                .Property(i => i.Title)
+                .HasMaxLength(255);
+
+            builder.Entity<RentItem>().HasIndex(i => i.PricePerDay);
+            builder.Entity<RentItem>().HasIndex(i => i.CreatedAt);
+
+            builder.Entity<RentItem>()
+                .HasIndex(i => new { i.Title, i.Description })
+                .IsFullText();
+
             builder.Entity<Booking>()
                 .HasOne(b => b.Customer)
                 .WithMany(u => u.Bookings)

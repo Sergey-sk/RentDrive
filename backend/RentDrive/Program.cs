@@ -72,6 +72,9 @@ builder.Services.AddOpenApi();
 builder.Services.AddTransient<IEmailSender<User>, EmailSender>();
 builder.Services.AddScoped<IItemsService, ItemsService>();
 builder.Services.AddSingleton<IFileService, FileService>();
+builder.Services.AddSingleton<IFileDeleteQueue, FileDeleteQueue>();
+builder.Services.AddHostedService<FileDeleteWorker>();
+builder.Services.AddHostedService<DatabaseImagesCleanupWorker>();
 
 var app = builder.Build();
 
@@ -89,7 +92,6 @@ if (app.Environment.IsDevelopment())
 app.UseStaticFiles();
 app.UseAntiforgery();
 
-
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -105,7 +107,7 @@ using (var scope = app.Services.CreateScope())
         var dbContext = services.GetRequiredService<ApplicationDbContext>();
         await dbContext.Database.MigrateAsync();
 
-        await IdentitySeedData.InitializeAsync(services);
+        await IdentitySeedData.InitializeAsync(services, dbContext);
     }
     catch (Exception ex)
     {

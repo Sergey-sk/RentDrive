@@ -18,20 +18,19 @@ namespace RentDrive.endpoints
             var itemsGroup = app.MapGroup("/items")
                 .WithTags("items");
 
-            itemsGroup.MapGet("/", async (IWebHostEnvironment env,
-                                    IItemsService itemsService,
+            itemsGroup.MapGet("/", async (IItemsService itemsService,
                                     [AsParameters] SortParams sortParams,
                                     int page = 1,
                                     int pageSize = 10) =>
             {
-                var items = await itemsService.GetItemsAsync(page, pageSize, sortParams, env);
+                var (items, pageCount) = await itemsService.GetItemsAsync(page, pageSize, sortParams);
 
-                return Results.Ok(new { items = items, totalCount = items.Count, page = page, pageSize = pageSize });
+                return Results.Ok(new { items, totalCount = items.Count, totalPages = pageCount, page, pageSize });
             });
 
-            itemsGroup.MapGet("/{id}", async (int id, IWebHostEnvironment env, IItemsService itemsService) =>
+            itemsGroup.MapGet("/{id}", async (int id, IItemsService itemsService) =>
             {
-                var item = await itemsService.GetItemByIdAsync(id, env);
+                var item = await itemsService.GetItemByIdAsync(id);
 
                 if (item == null)
                     return Results.NotFound($"Объект с id {id} не найден.");
@@ -39,6 +38,20 @@ namespace RentDrive.endpoints
                 return Results.Ok(item);
             })
                 .WithName("GetItemById");
+
+            itemsGroup.MapGet("/my", async ([AsParameters] SortParams sortParams,
+                                      ClaimsPrincipal principal,
+                                      IItemsService itemsService,
+                                      int page = 1,
+                                      int pageSize = 10) =>
+            {
+                string? userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (userId == null) return Results.Unauthorized();
+
+                var (items, pageCount) = await itemsService.GetUserItemsAsync(userId, page, pageSize, sortParams);
+
+                return Results.Ok(new {items, totalCount = items.Count, totalPages = pageCount, page, pageSize});
+            }).RequireAuthorization();
 
             var createEndpoint = itemsGroup.MapPost("/", async ([AsParameters] CreateRentItemDto createDto,
                                                                       IItemsService itemsService,

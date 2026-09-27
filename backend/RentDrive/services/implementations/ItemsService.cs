@@ -10,18 +10,23 @@ namespace RentDrive.services.implementations
     {
         private readonly ApplicationDbContext _context;
         private readonly IFileService _fileService;
+        private readonly IFileDeleteQueue _deleteQueue;
 
-        public ItemsService(ApplicationDbContext context, IFileService fileService)
+        public ItemsService(ApplicationDbContext context, IFileService fileService, IFileDeleteQueue deleteQueue)
         {
             _context = context;
             _fileService = fileService;
+            _deleteQueue = deleteQueue;
         }
 
-        public async Task<List<RentItemDto>> GetItemsAsync(int page, int pageSize, SortParams sortParams, IWebHostEnvironment env)
+        public async Task<(List<RentItemDto>, int)> GetItemsAsync(int page, int pageSize, SortParams sortParams)
         {
             var query = _context.RentItems.Include(i => i.Owner).AsQueryable();
 
             query = GetSortedList(query, sortParams);
+
+            var totalItems = await query.CountAsync();
+            var pageCount = (int)Math.Ceiling((double)totalItems / pageSize);
 
             var pagedEntities = await query
                 .Skip((page - 1) * pageSize)
@@ -30,37 +35,38 @@ namespace RentDrive.services.implementations
 
             var itemsDto = pagedEntities.Select(i => RentItemDto.ToDto(i)).ToList();
 
-            var wwwrootPath = env.WebRootPath;
-
-            foreach (var item in itemsDto)
-            {
-                for (int i = 0; i < item.ImageUrls.Count; i++)
-                {
-                    var fullPath = Path.Combine(wwwrootPath, item.ImageUrls[i]);
-
-                    if (!File.Exists(fullPath)) item.ImageUrls[i] = string.Empty;
-                }
-            }
-
-            return itemsDto;
+            return (itemsDto, pageCount);
         }
 
-        public async Task<RentItemDto?> GetItemByIdAsync(int id, IWebHostEnvironment env)
+        public async Task<(List<RentItemDto>, int)> GetUserItemsAsync(string userId, int page, int pageSize, SortParams sortParams)
+        {
+            var query = _context.RentItems
+                .Include(i => i.Owner)
+                .Where(i => i.OwnerId == userId)
+                .AsQueryable();
+
+            query = GetSortedList(query, sortParams);
+
+            var totalItems = await query.CountAsync();
+            var pageCount = (int)Math.Ceiling((double)totalItems / pageSize);
+
+            var pagedEntities = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            var itemsDto = pagedEntities.Select(i => RentItemDto.ToDto(i)).ToList();
+
+            return (itemsDto, pageCount);
+        }
+
+        public async Task<RentItemDto?> GetItemByIdAsync(int id)
         {
             var item = await _context.RentItems
                 .Include(ri => ri.Owner)
                 .FirstOrDefaultAsync(ri => ri.Id == id);
 
             if (item == null) return null;
-
-            var wwwrootPath = env.WebRootPath;
-
-            for (int i = 0; i < item.ImageUrls.Count; i++)
-            {
-                var fullPath = Path.Combine(wwwrootPath, item.ImageUrls[i]);
-
-                if (!File.Exists(fullPath)) item.ImageUrls[i] = string.Empty;
-            }
 
             return RentItemDto.ToDto(item);
         }
@@ -126,40 +132,62 @@ namespace RentDrive.services.implementations
 
         public async Task<bool> RemoveItemByIdAsync(int id, string ownerId, bool isAdminOrModer)
         {
-            List<string>? imgUrl = await _context.RentItems
-                .Where(ri => ri.Id == id)
-                .Select(ri => ri.ImageUrls)
-                .FirstOrDefaultAsync();
+            var item = await _context.RentItems.
+                FirstOrDefaultAsync(i => i.Id == id);
 
-            if (imgUrl != null)
-                _fileService.RemoveImage(imgUrl);
+            if(item == null) return false;
 
-            if (isAdminOrModer)
-            {
-                return await _context.RentItems
-                   .Where(ri => ri.Id == id)
-                   .ExecuteDeleteAsync() != 0;
-            }
+            if (item.OwnerId != ownerId && !isAdminOrModer) return false;
 
-            return await _context.RentItems
-                .Where(ri => ri.Id == id && ri.OwnerId == ownerId)
-                .ExecuteDeleteAsync() != 0;
+            var imagePaths = item.ImageUrls.ToList();
+
+            _context.RentItems.Remove(item);
+            await _context.SaveChangesAsync();
+
+            if (imagePaths != null && imagePaths.Count > 0)
+                _deleteQueue.Enqueue(imagePaths);
+
+            return true;
         }
 
         public async Task<bool> RemoveItemsAsync(string ownerId)
         {
-            return await _context.RentItems
+            var items = await _context.RentItems
+                .Where(i => i.OwnerId == ownerId)
+                .ToListAsync();
+
+            var imgUrls = items.SelectMany(i => i.ImageUrls).ToList();
+
+            var isDeletionSuccessful = await _context.RentItems
                 .Where(i => i.OwnerId == ownerId)
                 .ExecuteDeleteAsync() != 0;
+
+            if (isDeletionSuccessful)
+                _deleteQueue.Enqueue(imgUrls);
+
+            return isDeletionSuccessful;
         }
 
         private IQueryable<RentItem> GetSortedList(IQueryable<RentItem> source, SortParams sortParams)
         {
             IQueryable<RentItem> query = source;
 
-            if(!string.IsNullOrWhiteSpace(sortParams.Search))
-                query = source.Where(i => i.Title.Contains(sortParams.Search) ||
-                                    i.Description.Contains(sortParams.Search));
+            if (!string.IsNullOrWhiteSpace(sortParams.Search))
+            {
+                var formattedSearch = string.Join(" ", sortParams.Search.Trim().Split(' ').Select(w => $"+{w}*"));
+
+                query = query.Where(i => EF.Functions.Match(
+                    new[] { i.Title, i.Description },
+                    formattedSearch,
+                    MySqlMatchSearchMode.Boolean
+                ) > 0);
+            }
+
+            if (sortParams.MinPrice.HasValue)
+                query = query.Where(i => i.PricePerDay >= sortParams.MinPrice.Value);
+
+            if (sortParams.MaxPrice.HasValue)
+                query = query.Where(i => i.PricePerDay <= sortParams.MaxPrice.Value);
 
             bool isDesc = sortParams.SortDirection?.ToLower() == "desc";
 
@@ -171,8 +199,10 @@ namespace RentDrive.services.implementations
                 "title" => isDesc ? query.OrderByDescending(i => i.Title)
                                   : query.OrderBy(i => i.Title),
 
-                "priceperday" => isDesc ? query.OrderByDescending(i => i.PricePerDay)
-                                        : query.OrderBy(i => i.PricePerDay),
+                "priceperday" or
+                "price" or
+                "price_per_day" => isDesc ? query.OrderByDescending(i => i.PricePerDay)
+                                          : query.OrderBy(i => i.PricePerDay),
 
                 "created_at" or "createdat" => isDesc ? query.OrderByDescending(i => i.CreatedAt)
                                                       : query.OrderBy(i => i.CreatedAt),

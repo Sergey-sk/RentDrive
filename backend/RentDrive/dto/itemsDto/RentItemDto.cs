@@ -9,7 +9,7 @@ namespace RentDrive.dto.itemsDto
         public string Description { get; set; } = string.Empty;
         public decimal PricePerDay { get; set; }
         public List<string> ImageUrls { get; set; } = [];
-        public string CreatedAt { get; set; }
+        public string CreatedAt { get; set; } = string.Empty;
 
         public string OwnerId { get; set; } = string.Empty;
         public string OwnerName { get; set; } = string.Empty;

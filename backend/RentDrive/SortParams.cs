@@ -5,5 +5,7 @@
         public string? SortBy { get; set; } = "title";
         public string? SortDirection { get; set; } = "desc";
         public string? Search { get; set; } = string.Empty;
+        public decimal? MinPrice { get; set; }
+        public decimal? MaxPrice { get; set; }
     }
 }
