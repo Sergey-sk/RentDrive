@@ -16,7 +16,7 @@ namespace RentDrive.background
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(2));
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
 
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
@@ -28,37 +28,64 @@ namespace RentDrive.background
                     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                     var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
 
-                    var items = await context.RentItems.ToListAsync(stoppingToken);
-                    bool isDbChanged = false;
+                    var pageSize = 100;
+                    var page = 0;
+                    bool hasMoreItems = true;
+                    var totalFixed = 0;
 
-                    foreach (var item in items)
+                    while (hasMoreItems)
                     {
-                        var validUrls = new List<string>();
+                        stoppingToken.ThrowIfCancellationRequested();
 
-                        foreach (var imgUrl in item.ImageUrls)
+                        var currentChunk = await context.RentItems
+                            .OrderBy(i => i.Id)
+                            .Skip(page * pageSize)
+                            .Take(pageSize)
+                            .ToListAsync(stoppingToken);
+
+                        if(currentChunk.Count == 0)
                         {
-                            var fullPath = Path.Combine(env.WebRootPath, imgUrl);
+                            hasMoreItems = false;
+                            break;
+                        }
 
-                            if (File.Exists(fullPath))
-                                validUrls.Add(imgUrl);
-                            else
+                        bool chunkChanged = false;
+
+                        foreach(var item in currentChunk)
+                        {
+                            var validUrls = new List<string>();
+
+                            foreach(var imgUrl in item.ImageUrls)
                             {
-                                _logger.Warning("Обнаружена ссылка на несуществующее изображение в объекте Id {ItemId}: {Path}", item.Id, imgUrl);
-                                isDbChanged = true;
+                                var fullPath = Path.Combine(env.WebRootPath, imgUrl);
+
+                                if (File.Exists(fullPath))
+                                    validUrls.Add(imgUrl);
+                                else
+                                {
+                                    _logger.Warning("Обнаружена ссылка на несуществующее изображение в объекте Id {ItemId}: {Path}", item.Id, imgUrl);
+                                    chunkChanged = true;
+                                }
+                            }
+
+                            if(item.ImageUrls.Count != validUrls.Count)
+                            {
+                                item.ImageUrls = validUrls;
+                                totalFixed++;
                             }
                         }
 
-                        if (item.ImageUrls.Count != validUrls.Count)
-                            item.ImageUrls = validUrls;
-                    }
+                        if (chunkChanged)
+                            await context.SaveChangesAsync();
 
-                    if (isDbChanged)
-                    {
-                        _logger.Information("Проверка зваершена. Ссылки на несуществующие изображения удалены.");
-                        await context.SaveChangesAsync();
+                        page++;
+
+                        _logger.Information("Проверка зваершена. Исправлено объявлений: {Count}.", totalFixed);
                     }
-                    else
-                        _logger.Information("Проверка завершена. Все изображения валидны.");
+                }
+                catch(OperationCanceledException ex)
+                {
+                    _logger.Information("Проверка целостности прервана по сигналу отмены.");
                 }
                 catch (Exception ex)
                 {

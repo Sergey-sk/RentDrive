@@ -1,8 +1,11 @@
-﻿namespace RentDrive.services.interfaces
+﻿using System.Threading.Channels;
+
+namespace RentDrive.services.interfaces
 {
     public interface IFileDeleteQueue
     {
-        void Enqueue(List<string> filePaths);
-        bool TryDequeue(out List<string>? filePaths);
+        public ChannelReader<List<string>> Reader { get; }
+        ValueTask Enqueue(List<string> filePaths);
+        void Complete();
     }
 }

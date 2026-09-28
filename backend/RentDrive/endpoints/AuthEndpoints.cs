@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using RentDrive.db.models;
@@ -7,7 +6,6 @@ using RentDrive.dto.authDto;
 using RentDrive.endpoints.filters;
 using Serilog;
 using System.Security.Claims;
-using System.Security.Principal;
 using System.Text;
 using System.Text.Encodings.Web;
 
@@ -303,10 +301,10 @@ namespace RentDrive.endpoints
                                                    ClaimsPrincipal principal) =>
             {
                 var user = await userManager.GetUserAsync(principal);
-                if(user == null)
+                if (user == null)
                 {
                     logger.Warning("Попытка удалить несуществующего пользователя.");
-                    return Results.NotFound(new { error = "Пользователь не найден"});
+                    return Results.NotFound(new { error = "Пользователь не найден" });
                 }
 
                 var result = await userManager.DeleteAsync(user);

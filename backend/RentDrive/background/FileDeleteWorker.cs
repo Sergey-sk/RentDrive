@@ -18,28 +18,41 @@ namespace RentDrive.background
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                try
-                {
-                    if(_deleteQueue.TryDequeue(out var filePaths) && filePaths != null)
-                    {
-                        using var scope = _serviceProvider.CreateScope();
+            _logger.Information("Воркер удаления файлов запущен.");
 
+            try
+            {
+                await foreach(var filePaths in _deleteQueue.Reader.ReadAllAsync())
+                {
+                    try
+                    {
+                        if (filePaths == null || filePaths.Count == 0) continue;
+
+                        using var scope = _serviceProvider.CreateScope();
                         var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
 
-                        fileService.RemoveImage(filePaths);
+                        await fileService.RemoveImageAsync(filePaths);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        await Task.Delay(3000, stoppingToken);
+                        _logger.Error(ex, "Ошибка при удалении пакета файлов: {@FilePaths}.", filePaths);
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Ошибка в фоновом воркере удаления файлов");
                 }
             }
+            catch(Exception ex)
+            {
+                _logger.Fatal(ex, "Ошибка фонового воркера удаления файлов.");
+            }
+            finally
+            {
+                _logger.Information("Воркер удаления файлов завершил работу.");
+            }
+        }
+
+        public override Task StopAsync(CancellationToken cancellationToken)
+        {
+            _deleteQueue.Complete();
+            return base.StopAsync(cancellationToken);
         }
     }
 }

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using RentDrive;
+using RentDrive.background;
 using RentDrive.db;
 using RentDrive.db.models;
 using RentDrive.dto.authDto;

@@ -1,10 +1,12 @@
 ﻿using RentDrive.services.interfaces;
+using Serilog;
 
 namespace RentDrive.services.implementations
 {
     public class FileService:IFileService
     {
         private readonly IWebHostEnvironment _env;
+        private readonly Serilog.ILogger _logger = Log.ForContext<FileService>();
 
         public FileService(IWebHostEnvironment env)
         {
@@ -49,14 +51,26 @@ namespace RentDrive.services.implementations
             return paths;
         }
 
-        public void RemoveImage(List<string> imgUrls)
+        public async Task RemoveImageAsync(List<string> imgUrls)
         {
-            foreach (var imgUrl in imgUrls)
+            await Task.Run(() =>
             {
-                string fullPath = Path.Combine(_env.WebRootPath, imgUrl);
+                foreach (var imgUrl in imgUrls)
+                {
+                    try
+                    {
+                        if (string.IsNullOrWhiteSpace(imgUrl)) continue;
 
-                if (File.Exists(fullPath)) File.Delete(fullPath);
-            }
+                        string fulPath = Path.Combine(_env.WebRootPath, imgUrl);
+
+                        if (File.Exists(fulPath)) File.Delete(fulPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error(ex, "Не удалось удалить файл: {Path}", imgUrl);
+                    }
+                }
+            });
         }
     }
 }

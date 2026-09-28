@@ -1,21 +1,29 @@
 ﻿using RentDrive.services.interfaces;
-using System.Collections.Concurrent;
+using System.Threading.Channels;
 
 namespace RentDrive.services.implementations
 {
     public class FileDeleteQueue : IFileDeleteQueue
     {
-        private readonly ConcurrentQueue<List<string>> _queue = new();
-
-        public void Enqueue(List<string> filePaths)
+        private readonly Channel<List<string>> _queue = Channel.CreateBounded<List<string>>(new BoundedChannelOptions(10000)
         {
-            if (filePaths == null || filePaths.Count == 0) return;
-            _queue.Enqueue(filePaths);
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        public ChannelReader<List<string>> Reader => _queue.Reader;
+
+        public ValueTask Enqueue(List<string> filePaths)
+        {
+            if (filePaths == null || filePaths.Count == 0) return ValueTask.CompletedTask;
+            return _queue.Writer.WriteAsync(filePaths);
+            //_queue.Enqueue(filePaths);
         }
 
-        public bool TryDequeue(out List<string>? filePaths)
+        public void Complete()
         {
-            return _queue.TryDequeue(out filePaths);
+            _queue.Writer.TryComplete();
         }
     }
 }

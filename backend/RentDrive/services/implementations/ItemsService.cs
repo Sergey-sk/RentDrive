@@ -116,7 +116,7 @@ namespace RentDrive.services.implementations
 
             var imagesToRemove = item.ImageUrls.Except(editDto.KeepImageUrls).ToList();
             if (imagesToRemove.Count > 0)
-                _fileService.RemoveImage(imagesToRemove);
+                _fileService.RemoveImageAsync(imagesToRemove);
 
             var finalImageUrls = item.ImageUrls.Intersect(editDto.KeepImageUrls).ToList();
 
@@ -149,7 +149,7 @@ namespace RentDrive.services.implementations
             await _context.SaveChangesAsync();
 
             if (imagePaths != null && imagePaths.Count > 0)
-                _deleteQueue.Enqueue(imagePaths);
+                await _deleteQueue.Enqueue(imagePaths);
 
             _logger.Information("Объект с Id: {Id} успешно удален пользователем {UserId}", id, ownerId);
             return true;
@@ -168,7 +168,7 @@ namespace RentDrive.services.implementations
                 .ExecuteDeleteAsync() != 0;
 
             if (isDeletionSuccessful)
-                _deleteQueue.Enqueue(imgUrls);
+                await _deleteQueue.Enqueue(imgUrls);
 
             _logger.Information("Успешное удаление всех объектов у пользователя Id: {Id}", ownerId);
             return isDeletionSuccessful;
