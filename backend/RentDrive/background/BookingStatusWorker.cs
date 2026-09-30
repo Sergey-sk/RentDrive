@@ -41,7 +41,7 @@ namespace RentDrive.background
 
                     int completedCount = await context.Bookings
                         .Where(b => b.Status == db.models.BookingStatus.Active && b.EndDate < today)
-                        .ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, db.models.BookingStatus.Active), stoppingToken);
+                        .ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, db.models.BookingStatus.Completed), stoppingToken);
 
                     _logger.Information("Обновление завершено. Отклонено: {Cancelled}, Активировано: {Activated}, Завершено: {Completed}",
                         cancelledCount, activatedCount, completedCount);

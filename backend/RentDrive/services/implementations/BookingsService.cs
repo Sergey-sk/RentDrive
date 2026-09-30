@@ -42,15 +42,16 @@ namespace RentDrive.services.implementations
             return (bookingDtos, pageCount);
         }
 
-        public async Task<BookingDto?> GetUserBookingByIdAsync(string userId, int id)
+        public async Task<DetailedBookingDto?> GetUserBookingByIdAsync(string userId, int id)
         {
             var booking = await _context.Bookings
                 .Include(b => b.RentItem)
+                    .ThenInclude(i => i.Owner)
                 .FirstOrDefaultAsync(b => b.Id == id && b.CustomerId == userId);
 
             if (booking == null) return null;
 
-            return BookingDto.ToDto(booking);
+            return DetailedBookingDto.ToDto(booking);
         }
 
         public async Task<(List<BookingDto>, int)> GetBookingRequestsAsync(string ownerId, BookingQueryParameters queryParameters)
@@ -78,18 +79,19 @@ namespace RentDrive.services.implementations
             return (bookingDtos, pageCount);
         }
 
-        public async Task<BookingDto?> GetBookingRequestByIdAsync(int bookingId, string userId)
+        public async Task<DetailedRequestBookingDto?> GetBookingRequestByIdAsync(int bookingId, string userId)
         {
             var booking = await _context.Bookings
                 .Include(b => b.RentItem)
+                .Include(b => b.Customer)
                 .FirstOrDefaultAsync(b => b.Id == bookingId && b.RentItem.OwnerId == userId);
 
             if (booking == null) return null;
 
-            return BookingDto.ToDto(booking);
+            return DetailedRequestBookingDto.ToDto(booking);
         }
 
-        public async Task<BookingDto> CreateBookingAsync(string userId, int itemId, CreateBookingDto createDto)
+        public async Task<DetailedBookingDto> CreateBookingAsync(string userId, int itemId, CreateBookingDto createDto)
         {
             var rentItem = await _context.RentItems
                 .Include(i => i.Owner)
@@ -124,7 +126,7 @@ namespace RentDrive.services.implementations
             _context.Bookings.Add(newBooking);
             await _context.SaveChangesAsync();
 
-            return BookingDto.ToDto(newBooking);
+            return DetailedBookingDto.ToDto(newBooking);
         }
 
         public async Task<bool> DeleteBookingAsync(string userId, int id)
@@ -136,10 +138,11 @@ namespace RentDrive.services.implementations
                 .ExecuteDeleteAsync() != 0;
         }
 
-        public async Task<BookingDto?> UpdateBookingStatusAsync(int id, string ownerId, bool isApproved)
+        public async Task<DetailedBookingDto?> UpdateBookingStatusAsync(int id, string ownerId, bool isApproved)
         {
             var booking = await _context.Bookings
                 .Include(b => b.RentItem)
+                    .ThenInclude(i => i.Owner)
                 .FirstOrDefaultAsync(b => b.Id == id && b.RentItem.OwnerId == ownerId);
 
             if (booking == null) return null;
@@ -160,7 +163,7 @@ namespace RentDrive.services.implementations
             _context.Bookings.Update(booking);
             await _context.SaveChangesAsync();
 
-            return BookingDto.ToDto(booking);
+            return DetailedBookingDto.ToDto(booking);
         }
 
         private IQueryable<Booking> GetSortedList(IQueryable<Booking> source, BookingQueryParameters queryParameters)
