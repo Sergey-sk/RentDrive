@@ -19,13 +19,11 @@ namespace RentDrive.endpoints
                 .WithTags("items");
 
             itemsGroup.MapGet("/", async (IItemsService itemsService,
-                                    [AsParameters] SortParams sortParams,
-                                    int page = 1,
-                                    int pageSize = 10) =>
+                                    [AsParameters] ItemQueryParameters queryParams) =>
             {
-                var (items, pageCount) = await itemsService.GetItemsAsync(page, pageSize, sortParams);
+                var (items, pageCount) = await itemsService.GetItemsAsync(queryParams);
 
-                return Results.Ok(new { items, totalCount = items.Count, totalPages = pageCount, page, pageSize });
+                return Results.Ok(new { items, totalCount = items.Count, totalPages = pageCount, queryParams.Page, queryParams.PageSize });
             });
 
             itemsGroup.MapGet("/{id}", async (int id, IItemsService itemsService) =>
@@ -42,11 +40,9 @@ namespace RentDrive.endpoints
             })
                 .WithName("GetItemById");
 
-            itemsGroup.MapGet("/my", async ([AsParameters] SortParams sortParams,
+            itemsGroup.MapGet("/my", async ([AsParameters] ItemQueryParameters queryParams,
                                       ClaimsPrincipal principal,
-                                      IItemsService itemsService,
-                                      int page = 1,
-                                      int pageSize = 10) =>
+                                      IItemsService itemsService) =>
             {
                 string? userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
                 if (userId == null)
@@ -55,9 +51,9 @@ namespace RentDrive.endpoints
                     return Results.Unauthorized();
                 }
 
-                var (items, pageCount) = await itemsService.GetUserItemsAsync(userId, page, pageSize, sortParams);
+                var (items, pageCount) = await itemsService.GetUserItemsAsync(userId, queryParams);
 
-                return Results.Ok(new {items, totalCount = items.Count, totalPages = pageCount, page, pageSize});
+                return Results.Ok(new {items, totalCount = items.Count, totalPages = pageCount, queryParams.Page, queryParams.PageSize});
             }).RequireAuthorization();
 
             var createEndpoint = itemsGroup.MapPost("/", async ([AsParameters] CreateRentItemDto createDto,

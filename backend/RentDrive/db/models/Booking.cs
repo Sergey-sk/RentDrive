@@ -7,7 +7,7 @@
         public DateTime EndDate { get; set; }
         public decimal TotalPrice { get; set; }
         public BookingStatus Status { get; set; } = BookingStatus.Pending;
-
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
 
         public int RentItemId { get; set; }
         public RentItem RentItem { get; set; } = null!;

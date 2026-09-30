@@ -7,6 +7,7 @@ using RentDrive.background;
 using RentDrive.db;
 using RentDrive.db.models;
 using RentDrive.dto.authDto;
+using RentDrive.dto.bookingsDto;
 using RentDrive.endpoints;
 using RentDrive.services.implementations;
 using RentDrive.services.interfaces;
@@ -49,7 +50,7 @@ builder.Services.AddIdentityApiEndpoints<User>(options =>
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestDtoValidator>();
-builder.Services.AddValidatorsFromAssemblyContaining<CompleteProfileDto>();
+builder.Services.AddValidatorsFromAssemblyContaining<CompleteProfileDtoValidator>();
 
 builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme);
 
@@ -72,10 +73,12 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddOpenApi();
 builder.Services.AddTransient<IEmailSender<User>, EmailSender>();
 builder.Services.AddScoped<IItemsService, ItemsService>();
+builder.Services.AddScoped<IBookingsService, BookingsService>();
 builder.Services.AddSingleton<IFileService, FileService>();
 builder.Services.AddSingleton<IFileDeleteQueue, FileDeleteQueue>();
 builder.Services.AddHostedService<FileDeleteWorker>();
 builder.Services.AddHostedService<DatabaseImagesCleanupWorker>();
+builder.Services.AddHostedService<BookingStatusWorker>();
 
 var app = builder.Build();
 
@@ -98,6 +101,7 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapItemsEndpoint();
+app.MapBookingsEndpoints();
 
 using (var scope = app.Services.CreateScope())
 {

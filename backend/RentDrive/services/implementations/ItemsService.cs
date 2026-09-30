@@ -21,11 +21,14 @@ namespace RentDrive.services.implementations
             _deleteQueue = deleteQueue;
         }
 
-        public async Task<(List<RentItemDto>, int)> GetItemsAsync(int page, int pageSize, SortParams sortParams)
+        public async Task<(List<RentItemDto>, int)> GetItemsAsync(ItemQueryParameters queryParams)
         {
             var query = _context.RentItems.Include(i => i.Owner).AsQueryable();
 
-            query = GetSortedList(query, sortParams);
+            query = GetSortedList(query, queryParams);
+
+            var page = queryParams.Page ?? 1;
+            var pageSize = queryParams.PageSize ?? 10;
 
             var totalItems = await query.CountAsync();
             var pageCount = (int)Math.Ceiling((double)totalItems / pageSize);
@@ -40,14 +43,17 @@ namespace RentDrive.services.implementations
             return (itemsDto, pageCount);
         }
 
-        public async Task<(List<RentItemDto>, int)> GetUserItemsAsync(string userId, int page, int pageSize, SortParams sortParams)
+        public async Task<(List<RentItemDto>, int)> GetUserItemsAsync(string userId, ItemQueryParameters queryParams)
         {
             var query = _context.RentItems
                 .Include(i => i.Owner)
                 .Where(i => i.OwnerId == userId)
                 .AsQueryable();
 
-            query = GetSortedList(query, sortParams);
+            query = GetSortedList(query, queryParams);
+
+            var page = queryParams.Page ?? 1;
+            var pageSize = queryParams.PageSize ?? 10;
 
             var totalItems = await query.CountAsync();
             var pageCount = (int)Math.Ceiling((double)totalItems / pageSize);
@@ -116,7 +122,7 @@ namespace RentDrive.services.implementations
 
             var imagesToRemove = item.ImageUrls.Except(editDto.KeepImageUrls).ToList();
             if (imagesToRemove.Count > 0)
-                _fileService.RemoveImageAsync(imagesToRemove);
+                await _deleteQueue.Enqueue(imagesToRemove);
 
             var finalImageUrls = item.ImageUrls.Intersect(editDto.KeepImageUrls).ToList();
 
@@ -174,13 +180,13 @@ namespace RentDrive.services.implementations
             return isDeletionSuccessful;
         }
 
-        private IQueryable<RentItem> GetSortedList(IQueryable<RentItem> source, SortParams sortParams)
+        private IQueryable<RentItem> GetSortedList(IQueryable<RentItem> source, ItemQueryParameters queryParams)
         {
             IQueryable<RentItem> query = source;
 
-            if (!string.IsNullOrWhiteSpace(sortParams.Search))
+            if (!string.IsNullOrWhiteSpace(queryParams.Search))
             {
-                var formattedSearch = string.Join(" ", sortParams.Search.Trim().Split(' ').Select(w => $"+{w}*"));
+                var formattedSearch = string.Join(" ", queryParams.Search.Trim().Split(' ').Select(w => $"+{w}*"));
 
                 query = query.Where(i => EF.Functions.Match(
                     new[] { i.Title, i.Description },
@@ -189,15 +195,15 @@ namespace RentDrive.services.implementations
                 ) > 0);
             }
 
-            if (sortParams.MinPrice.HasValue)
-                query = query.Where(i => i.PricePerDay >= sortParams.MinPrice.Value);
+            if (queryParams.MinPrice.HasValue)
+                query = query.Where(i => i.PricePerDay >= queryParams.MinPrice.Value);
 
-            if (sortParams.MaxPrice.HasValue)
-                query = query.Where(i => i.PricePerDay <= sortParams.MaxPrice.Value);
+            if (queryParams.MaxPrice.HasValue)
+                query = query.Where(i => i.PricePerDay <= queryParams.MaxPrice.Value);
 
-            bool isDesc = sortParams.SortDirection?.ToLower() == "desc";
+            bool isDesc = queryParams.SortDirection?.ToLower() == "desc";
 
-            return sortParams.SortBy?.ToLower() switch
+            return queryParams.SortBy?.ToLower() switch
             {
                 "id" => isDesc ? query.OrderByDescending(i => i.Id)
                                : query.OrderBy(i => i.Id),
