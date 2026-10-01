@@ -20,6 +20,7 @@ namespace RentDrive.services.implementations
         public async Task<(List<BookingDto>, int)> GetUserBookingsAsync(string userId, BookingQueryParameters queryParameters)
         {
             var query = _context.Bookings
+                .IgnoreQueryFilters()
                 .Include(b => b.RentItem)
                 .Where(b => b.CustomerId == userId)
                 .AsQueryable();
@@ -45,6 +46,7 @@ namespace RentDrive.services.implementations
         public async Task<DetailedBookingDto?> GetUserBookingByIdAsync(string userId, int id)
         {
             var booking = await _context.Bookings
+                .IgnoreQueryFilters()
                 .Include(b => b.RentItem)
                     .ThenInclude(i => i.Owner)
                 .FirstOrDefaultAsync(b => b.Id == id && b.CustomerId == userId);
@@ -57,6 +59,7 @@ namespace RentDrive.services.implementations
         public async Task<(List<BookingDto>, int)> GetBookingRequestsAsync(string ownerId, BookingQueryParameters queryParameters)
         {
             var query = _context.Bookings
+                .IgnoreQueryFilters()
                 .Include(b => b.RentItem)
                 .Where(b => b.RentItem.OwnerId == ownerId)
                 .AsQueryable();
@@ -82,6 +85,7 @@ namespace RentDrive.services.implementations
         public async Task<DetailedRequestBookingDto?> GetBookingRequestByIdAsync(int bookingId, string userId)
         {
             var booking = await _context.Bookings
+                .IgnoreQueryFilters()
                 .Include(b => b.RentItem)
                 .Include(b => b.Customer)
                 .FirstOrDefaultAsync(b => b.Id == bookingId && b.RentItem.OwnerId == userId);
@@ -94,6 +98,7 @@ namespace RentDrive.services.implementations
         public async Task<DetailedBookingDto> CreateBookingAsync(string userId, int itemId, CreateBookingDto createDto)
         {
             var rentItem = await _context.RentItems
+                .IgnoreQueryFilters()
                 .Include(i => i.Owner)
                 .FirstOrDefaultAsync(i => i.Id == itemId) ?? throw new ArgumentException("Объявление не найдено.");
 
@@ -138,11 +143,12 @@ namespace RentDrive.services.implementations
                 .ExecuteDeleteAsync() != 0;
         }
 
-        public async Task<DetailedBookingDto?> UpdateBookingStatusAsync(int id, string ownerId, bool isApproved)
+        public async Task<DetailedRequestBookingDto?> UpdateBookingStatusAsync(int id, string ownerId, bool isApproved)
         {
             var booking = await _context.Bookings
+                .IgnoreQueryFilters()
                 .Include(b => b.RentItem)
-                    .ThenInclude(i => i.Owner)
+                .Include(b => b.Customer)
                 .FirstOrDefaultAsync(b => b.Id == id && b.RentItem.OwnerId == ownerId);
 
             if (booking == null) return null;
@@ -163,7 +169,7 @@ namespace RentDrive.services.implementations
             _context.Bookings.Update(booking);
             await _context.SaveChangesAsync();
 
-            return DetailedBookingDto.ToDto(booking);
+            return DetailedRequestBookingDto.ToDto(booking);
         }
 
         private IQueryable<Booking> GetSortedList(IQueryable<Booking> source, BookingQueryParameters queryParameters)

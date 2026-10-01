@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace RentDrive.services.implementations
 {
-    public class FileDeleteQueue : IFileDeleteQueue
+    public class FileDeleteQueue : IDeleteQueue<List<string>>
     {
         private readonly Channel<List<string>> _queue = Channel.CreateBounded<List<string>>(new BoundedChannelOptions(10000)
         {

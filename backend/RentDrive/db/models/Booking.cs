@@ -12,7 +12,7 @@
         public int RentItemId { get; set; }
         public RentItem RentItem { get; set; } = null!;
 
-        public string CustomerId { get; set; } = string.Empty;
-        public User Customer { get; set; } = null!;
+        public string? CustomerId { get; set; }
+        public User? Customer { get; set; }
     }
 }

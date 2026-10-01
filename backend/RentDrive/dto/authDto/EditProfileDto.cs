@@ -6,6 +6,7 @@ namespace RentDrive.dto.authDto
         string? Email,
         string? FirstName,
         string? LastName,
+        string? PhoneNumber,
         string? CurrentPassword,
         string? NewPassword
     );

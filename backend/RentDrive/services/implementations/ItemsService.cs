@@ -11,10 +11,10 @@ namespace RentDrive.services.implementations
     {
         private readonly ApplicationDbContext _context;
         private readonly IFileService _fileService;
-        private readonly IFileDeleteQueue _deleteQueue;
+        private readonly IDeleteQueue<List<string>> _deleteQueue;
         private readonly Serilog.ILogger _logger = Log.ForContext<ItemsService>();
 
-        public ItemsService(ApplicationDbContext context, IFileService fileService, IFileDeleteQueue deleteQueue)
+        public ItemsService(ApplicationDbContext context, IFileService fileService, IDeleteQueue<List<string>> deleteQueue)
         {
             _context = context;
             _fileService = fileService;
@@ -149,6 +149,18 @@ namespace RentDrive.services.implementations
 
             if (item.OwnerId != ownerId && !isAdminOrModer) return false;
 
+            bool hasBookings = await _context.Bookings.AnyAsync(b => b.RentItemId == id);
+
+            if (hasBookings)
+            {
+                item.IsDeleted = true;
+                _context.RentItems.Update(item);
+                await _context.SaveChangesAsync();
+
+                _logger.Information("Товар Id {ItemId} имеет историю броней. Выполнено мягкое удаление.", id);
+                return true;
+            }
+
             var imagePaths = item.ImageUrls.ToList();
 
             _context.RentItems.Remove(item);
@@ -164,20 +176,46 @@ namespace RentDrive.services.implementations
         public async Task<bool> RemoveItemsAsync(string ownerId)
         {
             var items = await _context.RentItems
+                .IgnoreQueryFilters()
                 .Where(i => i.OwnerId == ownerId)
                 .ToListAsync();
 
-            var imgUrls = items.SelectMany(i => i.ImageUrls).ToList();
+            if (items.Count == 0) return false;
+
+            List<int> itemsForSoftDelete = [];
+            List<int> itemsForHardDelete = [];
+            List<string> imgUrls = [];
+
+            var itemIdsWithBookings = await _context.Bookings
+                .Where(b => b.RentItem.OwnerId == ownerId)
+                .Select(b => b.RentItemId)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var item in items)
+            {
+                if (itemIdsWithBookings.Contains(item.Id))
+                    itemsForSoftDelete.Add(item.Id);
+                else
+                {
+                    itemsForHardDelete.Add(item.Id);
+                    imgUrls.AddRange(item.ImageUrls);
+                }
+            }
+
+            await _context.RentItems
+                .Where(i => i.OwnerId == ownerId && itemsForSoftDelete.Contains(i.Id))
+                .ExecuteUpdateAsync(s => s.SetProperty(i => i.IsDeleted, true));
 
             var isDeletionSuccessful = await _context.RentItems
-                .Where(i => i.OwnerId == ownerId)
+                .Where(i => i.OwnerId == ownerId && itemsForHardDelete.Contains(i.Id))
                 .ExecuteDeleteAsync() != 0;
 
             if (isDeletionSuccessful)
                 await _deleteQueue.Enqueue(imgUrls);
 
             _logger.Information("Успешное удаление всех объектов у пользователя Id: {Id}", ownerId);
-            return isDeletionSuccessful;
+            return true;
         }
 
         private IQueryable<RentItem> GetSortedList(IQueryable<RentItem> source, ItemQueryParameters queryParams)

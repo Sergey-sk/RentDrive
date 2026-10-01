@@ -9,7 +9,7 @@ namespace RentDrive.services.interfaces
         Task<(List<BookingDto>, int)> GetBookingRequestsAsync(string ownerId, BookingQueryParameters queryParameters);
         Task<DetailedRequestBookingDto?> GetBookingRequestByIdAsync(int bookingId, string userId);
         Task<DetailedBookingDto> CreateBookingAsync(string userId, int itemId, CreateBookingDto createDto);
-        Task<DetailedBookingDto?> UpdateBookingStatusAsync(int id, string ownerId, bool isApproved);
+        Task<DetailedRequestBookingDto?> UpdateBookingStatusAsync(int id, string ownerId, bool isApproved);
         Task<bool> DeleteBookingAsync(string userId, int id);
     }
 }

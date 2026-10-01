@@ -83,7 +83,7 @@ namespace RentDrive.background
                         _logger.Information("Проверка зваершена. Исправлено объявлений: {Count}.", totalFixed);
                     }
                 }
-                catch(OperationCanceledException ex)
+                catch(OperationCanceledException)
                 {
                     _logger.Information("Проверка целостности прервана по сигналу отмены.");
                 }

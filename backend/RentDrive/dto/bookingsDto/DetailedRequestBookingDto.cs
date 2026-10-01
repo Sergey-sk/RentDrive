@@ -8,6 +8,7 @@ namespace RentDrive.dto.bookingsDto
 
         public string CustomerFirstName { get; set; } = string.Empty;
         public string CustomerLastName { get; set; } = string.Empty;
+        public string CustomerPhoneNumber { get; set; } = string.Empty;
         public string CustomerEmail { get; set; } = string.Empty;
 
         public static DetailedRequestBookingDto ToDto(Booking model)
@@ -17,6 +18,7 @@ namespace RentDrive.dto.bookingsDto
                 Booking = BookingDto.ToDto(model),
                 CustomerFirstName = model.Customer?.FirstName ?? string.Empty,
                 CustomerLastName = model.Customer?.LastName ?? string.Empty,
+                CustomerPhoneNumber = model.Customer?.PhoneNumber ?? string.Empty,
                 CustomerEmail = model.Customer?.Email ?? string.Empty,
             };
         }

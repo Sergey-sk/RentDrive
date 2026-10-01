@@ -1,9 +1,13 @@
 ﻿using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
+using RentDrive.db;
 using RentDrive.db.models;
 using RentDrive.dto.authDto;
 using RentDrive.endpoints.filters;
+using RentDrive.services.implementations;
+using RentDrive.services.interfaces;
 using Serilog;
 using System.Security.Claims;
 using System.Text;
@@ -38,9 +42,7 @@ namespace RentDrive.endpoints
 
             authGroup.MapPost("/custom-register", async (RegisterRequestDto requestDto,
                                                         UserManager<User> userManager,
-                                                        SignInManager<User> signInManager,
-                                                        RoleManager<IdentityRole> roleManager,
-                                                        HttpContext context) =>
+                                                        SignInManager<User> signInManager) =>
             {
                 if (signInManager.IsSignedIn(signInManager.Context.User))
                 {
@@ -154,6 +156,7 @@ namespace RentDrive.endpoints
                     email = user.Email,
                     firstName = user.FirstName,
                     lastName = user.LastName,
+                    phoneNumber = user.PhoneNumber,
                     isEmailConfirmed = user.EmailConfirmed,
                     role = (await userManager.GetRolesAsync(user)).FirstOrDefault()
                 });
@@ -170,6 +173,7 @@ namespace RentDrive.endpoints
 
                 user.FirstName = dto.FirstName;
                 user.LastName = dto.LastName;
+                user.PhoneNumber = dto.PhoneNumber;
 
                 var result = await userManager.UpdateAsync(user);
                 if (!result.Succeeded)
@@ -204,6 +208,7 @@ namespace RentDrive.endpoints
 
                 if (!string.IsNullOrWhiteSpace(reqDto.FirstName)) user.FirstName = reqDto.FirstName;
                 if (!string.IsNullOrWhiteSpace(reqDto.LastName)) user.LastName = reqDto.LastName;
+                if (!string.IsNullOrWhiteSpace(reqDto.PhoneNumber)) user.PhoneNumber = reqDto.PhoneNumber;
 
                 var updateResult = await userManager.UpdateAsync(user);
                 if (!updateResult.Succeeded)
@@ -298,7 +303,9 @@ namespace RentDrive.endpoints
 
             authGroup.MapDelete("/account", async (SignInManager<User> signInManager,
                                                    UserManager<User> userManager,
-                                                   ClaimsPrincipal principal) =>
+                                                   ClaimsPrincipal principal,
+                                                   ApplicationDbContext context,
+                                                   IDeleteQueue<string> detachQueue) =>
             {
                 var user = await userManager.GetUserAsync(principal);
                 if (user == null)
@@ -307,6 +314,20 @@ namespace RentDrive.endpoints
                     return Results.NotFound(new { error = "Пользователь не найден" });
                 }
 
+                bool hasActiveOrders = await context.Bookings.AnyAsync(b =>
+                    b.Status == BookingStatus.Active &&
+                    (b.CustomerId == user.Id || b.RentItem.OwnerId == user.Id));
+
+                if(hasActiveOrders)
+                {
+                    logger.Warning("Попытка удалить аккаунт с активной бронью, {Id}", user.Id);
+                    return Results.BadRequest("Нельзя удалить аккаунт, пока у вас есть активные процессы аренды.");
+                }
+
+                await context.Bookings
+                    .Where(b => b.CustomerId == user.Id && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed))
+                    .ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, BookingStatus.Cancelled));
+
                 var result = await userManager.DeleteAsync(user);
                 if (!result.Succeeded)
                 {
@@ -314,11 +335,17 @@ namespace RentDrive.endpoints
                     return Results.InternalServerError(result.Errors);
                 }
 
+                await detachQueue.Enqueue(user.Id);
+
                 await signInManager.SignOutAsync();
                 return Results.NoContent();
             }).RequireAuthorization();
 
-            authGroup.MapDelete("/account/{id}", async (string id, UserManager<User> userManager, SignInManager<User> signInManager) =>
+            authGroup.MapDelete("/account/{id}", async (string id,
+                                                    UserManager<User> userManager,
+                                                    SignInManager<User> signInManager,
+                                                    ApplicationDbContext context,
+                                                    IDeleteQueue<string> detachQueue) =>
             {
                 var user = await userManager.FindByIdAsync(id);
                 if (user == null)
@@ -327,12 +354,28 @@ namespace RentDrive.endpoints
                     return Results.NotFound(new { error = "Пользователь не найден" });
                 }
 
+                bool hasActiveOrders = await context.Bookings.AnyAsync(b =>
+                   b.Status == BookingStatus.Active &&
+                   (b.CustomerId == user.Id || b.RentItem.OwnerId == user.Id));
+
+                if(hasActiveOrders)
+                {
+                    logger.Warning("Попытка удалить аккаунт с активной бронью, {Id}", user.Id);
+                    return Results.BadRequest("Нельзя удалить аккаунт, пока у вас есть активные процессы аренды.");
+                }
+
+                await context.Bookings
+                   .Where(b => b.CustomerId == user.Id && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed))
+                   .ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, BookingStatus.Cancelled));
+
                 var result = await userManager.DeleteAsync(user);
                 if (!result.Succeeded)
                 {
                     logger.Error("Ошибка при удалении пользователя: {@error}", result.Errors);
                     return Results.InternalServerError(result.Errors);
                 }
+
+                await detachQueue.Enqueue(user.Id);
 
                 return Results.NoContent();
             }).RequireAuthorization("AdminOnly");

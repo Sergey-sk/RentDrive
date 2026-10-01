@@ -36,11 +36,12 @@ namespace RentDrive.db
                 .HasIndex(i => new { i.Title, i.Description })
                 .IsFullText();
 
+            builder.Entity<RentItem>().HasQueryFilter(i => !i.IsDeleted);
+
             builder.Entity<Booking>()
                 .HasOne(b => b.Customer)
                 .WithMany(u => u.Bookings)
-                .HasForeignKey(b => b.CustomerId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasForeignKey(b => b.CustomerId);
 
             builder.Entity<Booking>()
                 .HasOne(b => b.RentItem)

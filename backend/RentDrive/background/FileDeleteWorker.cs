@@ -6,11 +6,11 @@ namespace RentDrive.background
 {
     public class FileDeleteWorker : BackgroundService
     {
-        private readonly IFileDeleteQueue _deleteQueue;
+        private readonly IDeleteQueue<List<string>> _deleteQueue;
         private readonly IServiceProvider _serviceProvider;
         private readonly Serilog.ILogger _logger = Log.ForContext<FileDeleteWorker>();
 
-        public FileDeleteWorker(IFileDeleteQueue deleteQueue, IServiceProvider serviceProvider)
+        public FileDeleteWorker(IDeleteQueue<List<string>> deleteQueue, IServiceProvider serviceProvider)
         {
             _deleteQueue = deleteQueue;
             _serviceProvider = serviceProvider;

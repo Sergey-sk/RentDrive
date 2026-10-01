@@ -25,12 +25,15 @@ namespace RentDrive.endpoints.filters
 
             if(user == null) return Results.Unauthorized();
 
-            bool isProfileIncomplete = string.IsNullOrEmpty(user.FirstName) || string.IsNullOrEmpty(user.LastName) || !user.EmailConfirmed;
+            bool isProfileIncomplete = string.IsNullOrWhiteSpace(user.FirstName) ||
+                string.IsNullOrWhiteSpace(user.LastName) ||
+                string.IsNullOrWhiteSpace(user.PhoneNumber) ||
+                !user.EmailConfirmed;
 
             if (isProfileIncomplete) return Results.Json(new
             {
                 error = "isProfileIncomplete",
-                message = "Необходимо заполнить имя, фамилию и подтвердить почту перед добавлением объявлений.",
+                message = "Необходимо заполнить имя, фамилию, номер телефона и подтвердить почту перед добавлением объявлений.",
                 redirectUrl = "/auth/account/complete-profile"
             }, statusCode: StatusCodes.Status403Forbidden);
 
