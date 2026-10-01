@@ -26,9 +26,9 @@ namespace RentDrive.endpoints
                     return Results.Unauthorized();
                 }
 
-                var (bookings, pageCount) = await bookingsService.GetUserBookingsAsync(userId, queryParameters);
+                var (bookings, pageCount, totalItems) = await bookingsService.GetUserBookingsAsync(userId, queryParameters);
 
-                return Results.Ok(new { bookings, totalCount = bookings.Count, totalPages = pageCount, queryParameters.Page, queryParameters.PageSize });
+                return Results.Ok(new { bookings, totalCount = totalItems, totalPages = pageCount, queryParameters.Page, queryParameters.PageSize });
             });
 
             bookingsGroup.MapGet("/{id}", async (int id,
@@ -107,9 +107,9 @@ namespace RentDrive.endpoints
                     return Results.Unauthorized();
                 }
 
-                var (bookings, pageCount) = await bookingsService.GetBookingRequestsAsync(userId, queryParameters);
+                var (bookings, pageCount, totalItems) = await bookingsService.GetBookingRequestsAsync(userId, queryParameters);
 
-                return Results.Ok(new { bookings, totalCount = bookings.Count, totalPages = pageCount, queryParameters.Page, queryParameters.PageSize });
+                return Results.Ok(new { bookings, totalCount = totalItems, totalPages = pageCount, queryParameters.Page, queryParameters.PageSize });
             });
 
             bookingsGroup.MapGet("/requests/{id}", async (int id,

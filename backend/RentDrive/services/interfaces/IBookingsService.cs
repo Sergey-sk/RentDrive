@@ -4,9 +4,9 @@ namespace RentDrive.services.interfaces
 {
     public interface IBookingsService
     {
-        Task<(List<BookingDto>, int)> GetUserBookingsAsync(string userId, BookingQueryParameters queryParameters);
+        Task<(List<BookingDto> bookings, int pageCount, int totalItems)> GetUserBookingsAsync(string userId, BookingQueryParameters queryParameters);
         Task<DetailedBookingDto?> GetUserBookingByIdAsync(string userId, int id);
-        Task<(List<BookingDto>, int)> GetBookingRequestsAsync(string ownerId, BookingQueryParameters queryParameters);
+        Task<(List<BookingDto> bookings, int pageCount, int totalItems)> GetBookingRequestsAsync(string ownerId, BookingQueryParameters queryParameters);
         Task<DetailedRequestBookingDto?> GetBookingRequestByIdAsync(int bookingId, string userId);
         Task<DetailedBookingDto> CreateBookingAsync(string userId, int itemId, CreateBookingDto createDto);
         Task<DetailedRequestBookingDto?> UpdateBookingStatusAsync(int id, string ownerId, bool isApproved);

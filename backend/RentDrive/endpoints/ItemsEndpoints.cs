@@ -21,9 +21,9 @@ namespace RentDrive.endpoints
             itemsGroup.MapGet("/", async (IItemsService itemsService,
                                     [AsParameters] ItemQueryParameters queryParams) =>
             {
-                var (items, pageCount) = await itemsService.GetItemsAsync(queryParams);
+                var (items, pageCount, totalItems) = await itemsService.GetItemsAsync(queryParams);
 
-                return Results.Ok(new { items, totalCount = items.Count, totalPages = pageCount, queryParams.Page, queryParams.PageSize });
+                return Results.Ok(new { items, totalCount = totalItems, totalPages = pageCount, queryParams.Page, queryParams.PageSize });
             });
 
             itemsGroup.MapGet("/{id}", async (int id, IItemsService itemsService) =>
@@ -51,9 +51,9 @@ namespace RentDrive.endpoints
                     return Results.Unauthorized();
                 }
 
-                var (items, pageCount) = await itemsService.GetUserItemsAsync(userId, queryParams);
+                var (items, pageCount, totalItems) = await itemsService.GetUserItemsAsync(userId, queryParams);
 
-                return Results.Ok(new {items, totalCount = items.Count, totalPages = pageCount, queryParams.Page, queryParams.PageSize});
+                return Results.Ok(new {items, totalCount = totalItems, totalPages = pageCount, queryParams.Page, queryParams.PageSize});
             }).RequireAuthorization();
 
             var createEndpoint = itemsGroup.MapPost("/", async ([AsParameters] CreateRentItemDto createDto,

@@ -5,8 +5,8 @@ namespace RentDrive.services.interfaces
 {
     public interface IItemsService
     {
-        Task<(List<RentItemDto>, int)> GetItemsAsync(ItemQueryParameters queryParams);
-        Task<(List<RentItemDto>, int)> GetUserItemsAsync(string userId, ItemQueryParameters queryParams);
+        Task<(List<RentItemDto> items, int pageCount, int totalItems)> GetItemsAsync(ItemQueryParameters queryParams);
+        Task<(List<RentItemDto> items, int pageCount, int totalItems)> GetUserItemsAsync(string userId, ItemQueryParameters queryParams);
         Task<RentItemDto?> GetItemByIdAsync(int id);
         Task<RentItemDto> CreateItemAsync(CreateRentItemDto createDto, User user);
         Task<RentItemDto?> UpdateItemAsync(int id, string ownerId, bool isAdminOrModer, EditItemDto itemDto);

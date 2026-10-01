@@ -21,7 +21,7 @@ namespace RentDrive.services.implementations
             _deleteQueue = deleteQueue;
         }
 
-        public async Task<(List<RentItemDto>, int)> GetItemsAsync(ItemQueryParameters queryParams)
+        public async Task<(List<RentItemDto> items, int pageCount, int totalItems)> GetItemsAsync(ItemQueryParameters queryParams)
         {
             var query = _context.RentItems.Include(i => i.Owner).AsQueryable();
 
@@ -40,10 +40,10 @@ namespace RentDrive.services.implementations
 
             var itemsDto = pagedEntities.Select(i => RentItemDto.ToDto(i)).ToList();
 
-            return (itemsDto, pageCount);
+            return (itemsDto, pageCount, totalItems);
         }
 
-        public async Task<(List<RentItemDto>, int)> GetUserItemsAsync(string userId, ItemQueryParameters queryParams)
+        public async Task<(List<RentItemDto> items, int pageCount, int totalItems)> GetUserItemsAsync(string userId, ItemQueryParameters queryParams)
         {
             var query = _context.RentItems
                 .Include(i => i.Owner)
@@ -65,7 +65,7 @@ namespace RentDrive.services.implementations
 
             var itemsDto = pagedEntities.Select(i => RentItemDto.ToDto(i)).ToList();
 
-            return (itemsDto, pageCount);
+            return (itemsDto, pageCount, totalItems);
         }
 
         public async Task<RentItemDto?> GetItemByIdAsync(int id)

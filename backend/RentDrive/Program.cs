@@ -6,6 +6,7 @@ using RentDrive;
 using RentDrive.background;
 using RentDrive.db;
 using RentDrive.db.models;
+using RentDrive.dto.accountDto;
 using RentDrive.dto.authDto;
 using RentDrive.dto.bookingsDto;
 using RentDrive.endpoints;
@@ -51,6 +52,9 @@ builder.Services.AddIdentityApiEndpoints<User>(options =>
 
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestDtoValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<CompleteProfileDtoValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<ChangeFirstLastNameDtoValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<ChangePasswordDtoValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<ChangeEmailDtoValidator>();
 
 builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme);
 
@@ -101,6 +105,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapAuthEndpoints();
+app.MapAccountEndpoints();
 app.MapItemsEndpoint();
 app.MapBookingsEndpoints();
 

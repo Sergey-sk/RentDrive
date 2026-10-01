@@ -17,7 +17,7 @@ namespace RentDrive.services.implementations
             _context = context;
         }
 
-        public async Task<(List<BookingDto>, int)> GetUserBookingsAsync(string userId, BookingQueryParameters queryParameters)
+        public async Task<(List<BookingDto> bookings, int pageCount, int totalItems)> GetUserBookingsAsync(string userId, BookingQueryParameters queryParameters)
         {
             var query = _context.Bookings
                 .IgnoreQueryFilters()
@@ -40,7 +40,7 @@ namespace RentDrive.services.implementations
 
             var bookingDtos = pagedItems.Select(b => BookingDto.ToDto(b)).ToList();
 
-            return (bookingDtos, pageCount);
+            return (bookingDtos, pageCount, totalItems);
         }
 
         public async Task<DetailedBookingDto?> GetUserBookingByIdAsync(string userId, int id)
@@ -56,7 +56,7 @@ namespace RentDrive.services.implementations
             return DetailedBookingDto.ToDto(booking);
         }
 
-        public async Task<(List<BookingDto>, int)> GetBookingRequestsAsync(string ownerId, BookingQueryParameters queryParameters)
+        public async Task<(List<BookingDto> bookings, int pageCount, int totalItems)> GetBookingRequestsAsync(string ownerId, BookingQueryParameters queryParameters)
         {
             var query = _context.Bookings
                 .IgnoreQueryFilters()
@@ -79,7 +79,7 @@ namespace RentDrive.services.implementations
 
             var bookingDtos = pagedItems.Select(b => BookingDto.ToDto(b)).ToList();
 
-            return (bookingDtos, pageCount);
+            return (bookingDtos, pageCount, totalItems);
         }
 
         public async Task<DetailedRequestBookingDto?> GetBookingRequestByIdAsync(int bookingId, string userId)
@@ -98,7 +98,6 @@ namespace RentDrive.services.implementations
         public async Task<DetailedBookingDto> CreateBookingAsync(string userId, int itemId, CreateBookingDto createDto)
         {
             var rentItem = await _context.RentItems
-                .IgnoreQueryFilters()
                 .Include(i => i.Owner)
                 .FirstOrDefaultAsync(i => i.Id == itemId) ?? throw new ArgumentException("Объявление не найдено.");
 
