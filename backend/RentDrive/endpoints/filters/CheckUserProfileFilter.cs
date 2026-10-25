@@ -16,26 +16,33 @@ namespace RentDrive.endpoints.filters
         {
             var principal = context.HttpContext.User;
 
-            if(principal.Identity?.IsAuthenticated != true)
+            if (principal.Identity?.IsAuthenticated != true)
             {
                 return Results.Unauthorized();
             }
 
             var user = await _userManager.GetUserAsync(principal);
 
-            if(user == null) return Results.Unauthorized();
+            if (user == null) return Results.Unauthorized();
 
             bool isProfileIncomplete = string.IsNullOrWhiteSpace(user.FirstName) ||
                 string.IsNullOrWhiteSpace(user.LastName) ||
                 string.IsNullOrWhiteSpace(user.PhoneNumber) ||
                 !user.EmailConfirmed;
 
-            if (isProfileIncomplete) return Results.Json(new
+            var extensions = new Dictionary<string, object?>
             {
-                error = "isProfileIncomplete",
-                message = "Необходимо заполнить имя, фамилию, номер телефона и подтвердить почту перед добавлением объявлений.",
-                redirectUrl = "/auth/account/complete-profile"
-            }, statusCode: StatusCodes.Status403Forbidden);
+                { "errorCode", "isProfileIncomplete"},
+                { "redirectUrl", "/auth/account/complete-profile"}
+            };
+
+            if (isProfileIncomplete)
+                return Results.Problem(
+                    detail: "Необходимо заполнить имя, фамилию, номер телефона и подтвердить почту перед добавлением объявлений.",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Необходимо заполнить недостающие данные.",
+                    extensions: extensions
+                );
 
             return await next(context);
         }

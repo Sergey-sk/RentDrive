@@ -18,7 +18,7 @@ namespace RentDrive.background
         {
             _logger.Information("Фоновый воркер управления статусам бронирований запущен");
 
-            using var timer = new PeriodicTimer(TimeSpan.FromHours(24));
+            using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
 
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {

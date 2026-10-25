@@ -3,10 +3,17 @@ using Serilog;
 
 namespace RentDrive.services.implementations
 {
-    public class FileService:IFileService
+    public class FileService : IFileService
     {
         private readonly IWebHostEnvironment _env;
         private readonly Serilog.ILogger _logger = Log.ForContext<FileService>();
+        private readonly Dictionary<string, byte[]> _imgSignatures = new()
+        {
+            { ".jpg", new byte[] { 0xFF, 0xD8, 0xFF } },
+            { ".jpeg", new byte[] { 0xFF, 0xD8, 0xFF } },
+            { ".png", new byte[] { 0x89, 0x50, 0x4E, 0x47 } },
+            { ".webp", new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 } }
+        };
 
         public FileService(IWebHostEnvironment env)
         {
@@ -17,7 +24,6 @@ namespace RentDrive.services.implementations
         {
             if (files == null) return [];
 
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
             List<string> paths = [];
 
             foreach (var file in files)
@@ -26,8 +32,7 @@ namespace RentDrive.services.implementations
 
                 var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
 
-                if (!allowedExtensions.Contains(extension))
-                    throw new ArgumentException("Недопустимый формат файла. Разрешены только изображения.");
+                if (!await IsValidImage(file)) return [];
 
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 string randSuffix = Guid.NewGuid().ToString("N")[..5];
@@ -45,7 +50,7 @@ namespace RentDrive.services.implementations
                     await file.CopyToAsync(fs);
                 }
 
-                paths.Add( $"uploads/images/{uniqueFileName}");
+                paths.Add($"uploads/images/{uniqueFileName}");
             }
 
             return paths;
@@ -71,6 +76,32 @@ namespace RentDrive.services.implementations
                     }
                 }
             });
+        }
+
+        private async Task<bool> IsValidImage(IFormFile file)
+        {
+            if (file == null || file.Length == 0) return false;
+
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!_imgSignatures.ContainsKey(extension))
+                return false;
+
+            var expectedSignature = _imgSignatures[extension];
+
+            using var stream = file.OpenReadStream();
+            byte[] buffer = new byte[expectedSignature.Length];
+            var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+
+            if(bytesRead < expectedSignature.Length)
+                return false;
+
+            if(extension == ".webp")
+            {
+                return buffer[0] == 0x52 && buffer[1] == 0x49 && buffer[2] == 0x46 && buffer[3] == 0x46 &&
+                               buffer[8] == 0x57 && buffer[9] == 0x45 && buffer[10] == 0x42 && buffer[11] == 0x50;
+            }
+
+            return buffer.SequenceEqual(expectedSignature);
         }
     }
 }

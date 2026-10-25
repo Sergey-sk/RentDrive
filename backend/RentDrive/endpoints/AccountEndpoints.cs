@@ -1,6 +1,5 @@
 ﻿using FluentValidation;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using RentDrive.db;
@@ -10,7 +9,6 @@ using RentDrive.dto.authDto;
 using RentDrive.endpoints.filters;
 using RentDrive.services.interfaces;
 using Serilog;
-using Serilog.Core;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -32,7 +30,11 @@ namespace RentDrive.endpoints
                 if (!isSignedIn)
                 {
                     _logger.Warning("Попытка доступа к информации о пользователе без авторизации. Данные токена: {User}", signInManager.Context.User.Identity?.Name);
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 var user = await userManager.GetUserAsync(signInManager.Context.User);
@@ -41,7 +43,12 @@ namespace RentDrive.endpoints
                 {
                     _logger.Warning("Авторизованный пользователь не найден в БД. Сессия принудительно закрыта. Данные токена: {User}", signInManager.Context.User.Identity?.Name);
                     await signInManager.SignOutAsync();
-                    return Results.NotFound(new { message = "Пользователь не найден" });
+
+                    return Results.Problem(
+                        detail: "Пользователь не найден",
+                        title: "Пользователь не найден",
+                        statusCode: StatusCodes.Status404NotFound
+                    );
                 }
 
                 return Results.Ok(new
@@ -56,15 +63,19 @@ namespace RentDrive.endpoints
             });
 
             accountGroup.MapPut("/complete-profile", async (CompleteProfileDto dto,
-                                                                  UserManager<User> userManager,
-                                                                  ClaimsPrincipal principal,
-                                                                  SignInManager<User> signInManager) =>
+                                                            UserManager<User> userManager,
+                                                            ClaimsPrincipal principal,
+                                                            SignInManager<User> signInManager) =>
             {
                 var user = await userManager.GetUserAsync(principal);
                 if (user == null)
                 {
                     _logger.Warning("Попытка обновления профиля неавторизованным пользователем. Данные токена: {User}", principal.Identity?.Name);
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 user.FirstName = dto.FirstName;
@@ -75,7 +86,7 @@ namespace RentDrive.endpoints
                 if (!result.Succeeded)
                 {
                     _logger.Warning("Ошибка заполнения имени, фамилии или телефона пользователя. Id: {Id}, Errors: {@errors}", user.Id, result.Errors);
-                    return Results.ValidationProblem(result.Errors.ToDictionary(e => e.Code, e => new[] {e.Description}));
+                    return Results.ValidationProblem(result.Errors.ToDictionary(e => e.Code, e => new[] { e.Description }));
                 }
 
                 await signInManager.RefreshSignInAsync(user);
@@ -94,7 +105,11 @@ namespace RentDrive.endpoints
                 if (user == null)
                 {
                     _logger.Warning("Попытка изменить данные неавторизованным пользователем");
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 if (!string.IsNullOrWhiteSpace(changeDto.FirstName)) user.FirstName = changeDto.FirstName;
@@ -128,7 +143,11 @@ namespace RentDrive.endpoints
                 if (user == null)
                 {
                     _logger.Warning("Попытка изменить пароль неавторизованным пользователем.");
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 var passwordResult = await userManager.ChangePasswordAsync(user, changeDto.CurrentPassword, changeDto.NewPassword);
@@ -152,21 +171,33 @@ namespace RentDrive.endpoints
                 if (user == null)
                 {
                     _logger.Warning("Попытка изменить почту неавторизованным пользователем.");
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 var existingEmail = await userManager.FindByEmailAsync(changeDto.Email);
                 if (existingEmail != null)
                 {
                     _logger.Warning("Попытка изменить email на уже занятый: {Email}, пользователем {Id}.", changeDto.Email, user.Id);
-                    return Results.BadRequest(new { error = $"Email {changeDto.Email} уже занят другим аккаунтом." });
+                    return Results.Problem(
+                        detail: $"Email {changeDto.Email} уже занят другим аккаунтом.",
+                        title: "Email занят",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 var isPasswordCorrect = await userManager.CheckPasswordAsync(user, changeDto.CurrentPassword);
                 if (!isPasswordCorrect)
                 {
                     _logger.Warning("Указан неверный пароль при смене почты: {Password}, пользователем {Id}.", changeDto.CurrentPassword, user.Id);
-                    return Results.BadRequest(new { error = "Указан неверный пароль." });
+                    return Results.Problem(
+                        detail: "Указан неверный пароль.",
+                        title: "Неверный пароль",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 var code = await userManager.GenerateChangeEmailTokenAsync(user, changeDto.Email);
@@ -177,7 +208,11 @@ namespace RentDrive.endpoints
                 if (callbackUrl == null)
                 {
                     _logger.Warning("Ошибка генерации ссылки подтверждения смены Email на {Email} пользователем {Id}.", changeDto.Email, user.Id);
-                    return Results.InternalServerError(new { error = "Ошибка генерации ссылки подтверждения смены Email." });
+                    return Results.Problem(
+                        detail: "Ошибка генерации ссылки подтверждения смены Email.",
+                        title: "Ошибка генерации ссылки",
+                        statusCode: StatusCodes.Status500InternalServerError
+                    );
                 }
 
                 await emailSender.SendConfirmationLinkAsync(user, changeDto.Email, HtmlEncoder.Default.Encode(callbackUrl));
@@ -193,7 +228,11 @@ namespace RentDrive.endpoints
                 if (user == null)
                 {
                     _logger.Warning("Пользователь не найден при смене почты {Id}.", userId);
-                    return Results.NotFound(new { error = "Пользователь не найден." });
+                    return Results.Problem(
+                        detail: "Пользователь не найден.",
+                        title: "Пользователь не найден.",
+                        statusCode: StatusCodes.Status404NotFound
+                    );
                 }
 
                 var decodeCode = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
@@ -203,7 +242,11 @@ namespace RentDrive.endpoints
                 if (!result.Succeeded)
                 {
                     _logger.Error("Ошибка смены email. Id: {Id}, Email: {Email}", userId, email);
-                    return Results.BadRequest(new { error = "Не удалось изменить Email. Ссылка устарела или неверна." });
+                    return Results.Problem(
+                        detail: "Не удалось изменить Email. Ссылка устарела или неверна.",
+                        title: "Не удалось изменить Email.",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 await userManager.SetUserNameAsync(user, email);
@@ -222,7 +265,11 @@ namespace RentDrive.endpoints
                 if (user == null)
                 {
                     _logger.Warning("Попытка удалить несуществующего пользователя.");
-                    return Results.NotFound(new { error = "Пользователь не найден." });
+                    return Results.Problem(
+                        detail: "Пользователь не найден.",
+                        title: "Пользователь не найден.",
+                        statusCode: StatusCodes.Status404NotFound
+                    );
                 }
 
                 bool hasActiveOrders = await context.Bookings.AnyAsync(b =>
@@ -232,7 +279,11 @@ namespace RentDrive.endpoints
                 if (hasActiveOrders)
                 {
                     _logger.Warning("Попытка удалить аккаунт с активной бронью, {Id}.", user.Id);
-                    return Results.BadRequest(new { error = "Нельзя удалить аккаунт, пока у вас есть активные процессы аренды." });
+                    return Results.Problem(
+                        detail: "Нельзя удалить аккаунт, пока у вас есть активные процессы аренды.",
+                        title: "Нельзя удалить аккаунт",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 await context.Bookings
@@ -243,7 +294,11 @@ namespace RentDrive.endpoints
                 if (!result.Succeeded)
                 {
                     _logger.Error("Ошибка при удалении пользователя: {@error}", result.Errors);
-                    return Results.InternalServerError(result.Errors);
+                    return Results.Problem(
+                        detail: $"Ошибка удаления аккаунта: {result.Errors.ToDictionary(e => e.Code, e => e.Description)}",
+                        title: "Ошибка удаления аккаунта",
+                        statusCode: StatusCodes.Status500InternalServerError
+                    );
                 }
 
                 await detachQueue.Enqueue(user.Id);

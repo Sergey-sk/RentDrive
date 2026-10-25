@@ -33,7 +33,11 @@ namespace RentDrive.endpoints
                 if (item == null)
                 {
                     logger.Warning("Попытка получения несуществующего объекта по Id: {Id}", id);
-                    return Results.NotFound($"Объект с id {id} не найден.");
+                    return Results.Problem(
+                        detail: $"Объект с id {id} не найден.",
+                        title: "Объект не найден",
+                        statusCode: StatusCodes.Status404NotFound
+                    );
                 }
 
                 return Results.Ok(item);
@@ -48,12 +52,16 @@ namespace RentDrive.endpoints
                 if (userId == null)
                 {
                     logger.Warning("Попытка получения объекта неавторизованным пользователем");
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 var (items, pageCount, totalItems) = await itemsService.GetUserItemsAsync(userId, queryParams);
 
-                return Results.Ok(new {items, totalCount = totalItems, totalPages = pageCount, queryParams.Page, queryParams.PageSize});
+                return Results.Ok(new { items, totalCount = totalItems, totalPages = pageCount, queryParams.Page, queryParams.PageSize });
             }).RequireAuthorization();
 
             var createEndpoint = itemsGroup.MapPost("/", async ([AsParameters] CreateRentItemDto createDto,
@@ -67,7 +75,11 @@ namespace RentDrive.endpoints
                 if (user == null)
                 {
                     logger.Warning("Попытка загрузки объекта неавторизованным пользователем");
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 var newItem = await itemsService.CreateItemAsync(createDto, user);
@@ -91,28 +103,28 @@ namespace RentDrive.endpoints
                 if (ownerId == null)
                 {
                     logger.Warning("Попытка изменения объекта неавторизованным пользователем");
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 var isAdminOrModer = principal.IsInRole("Admin") || principal.IsInRole("Moderator");
 
-                try
-                {
-                    var editedItem = await itemsService.UpdateItemAsync(id, ownerId, isAdminOrModer, editDto);
+                var editedItem = await itemsService.UpdateItemAsync(id, ownerId, isAdminOrModer, editDto);
 
-                    if (editedItem == null)
-                    {
-                        logger.Warning("Попытка изменения несуществующего объекта по Id: {Id}", id);
-                        return Results.NotFound(new { error = "Такой объект не найден" });
-                    }
-
-                    return Results.Ok(editedItem);
-                }
-                catch (UnauthorizedAccessException)
+                if (editedItem == null)
                 {
-                    logger.Warning("Попытка изменить объект другого пользователя пользователем с Id: {Id}", ownerId);
-                    return Results.Forbid();
+                    logger.Warning("Попытка изменения несуществующего объекта по Id: {Id}", id);
+                    return Results.Problem(
+                        detail: "Объект не найден.",
+                        title: "Объект не найден",
+                        statusCode: StatusCodes.Status404NotFound
+                    );
                 }
+
+                return Results.Ok(editedItem);
             }).RequireAuthorization().DisableAntiforgery();
 
             itemsGroup.MapDelete("/{id}", async (int id, IItemsService itemsService, ClaimsPrincipal principal) =>
@@ -122,7 +134,11 @@ namespace RentDrive.endpoints
                 if (ownerId == null)
                 {
                     logger.Warning("Попытка удалить объект неавторизованным пользователем");
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 var isAdminOrModer = principal.FindFirstValue(ClaimTypes.Role) == "Admin" ||
@@ -133,7 +149,11 @@ namespace RentDrive.endpoints
                 if (!isRemoved)
                 {
                     logger.Warning("Попытка удалить несуществующий или чужой объект с Id: {ItemId}, пользователем Id: {UserId}", id, ownerId);
-                    return Results.BadRequest();
+                    return Results.Problem(
+                        detail: "Объект не найден.",
+                        title: "Объект не найден",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 return Results.NoContent();
@@ -146,7 +166,11 @@ namespace RentDrive.endpoints
                 if (ownerId == null)
                 {
                     logger.Warning("Попытка удалить объекты неавторизованным пользователем");
-                    return Results.Unauthorized();
+                    return Results.Problem(
+                        detail: "Вы не авторизованы. Пожалуйста, войдите в аккаунт или зарегистрируйтесь.",
+                        title: "Требуется авторизация",
+                        statusCode: StatusCodes.Status401Unauthorized
+                    );
                 }
 
                 var isSuccess = await itemsService.RemoveItemsAsync(ownerId);
@@ -154,7 +178,11 @@ namespace RentDrive.endpoints
                 if (!isSuccess)
                 {
                     logger.Warning("Пользователь с Id: {UserId} попытался удалить объекты, которые не были найдены", ownerId);
-                    return Results.NotFound();
+                    return Results.Problem(
+                        detail: "Объекты не найдены.",
+                        title: "Объекты не найдены",
+                        statusCode: StatusCodes.Status404NotFound
+                    );
                 }
 
                 return Results.NoContent();

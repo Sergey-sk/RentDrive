@@ -1,17 +1,13 @@
 ﻿using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using RentDrive.db;
 using RentDrive.db.models;
 using RentDrive.dto.authDto;
 using RentDrive.endpoints.filters;
-using RentDrive.services.implementations;
 using RentDrive.services.interfaces;
 using Serilog;
 using System.Security.Claims;
-using System.Text;
-using System.Text.Encodings.Web;
 
 namespace RentDrive.endpoints
 {
@@ -33,7 +29,8 @@ namespace RentDrive.endpoints
                         logger.Warning("Попытка обращения к эндпоинту /auth/register");
                         return Results.Problem(
                             detail: "Стандартные методы отключены. Используйте /auth/custom-register",
-                            statusCode: 400
+                            title: "Стандартные методы отключены",
+                            statusCode: StatusCodes.Status400BadRequest
                         );
                     }
 
@@ -47,14 +44,22 @@ namespace RentDrive.endpoints
                 if (signInManager.IsSignedIn(signInManager.Context.User))
                 {
                     logger.Warning("Попытка регистрации. Пользователь уже авторизован");
-                    return Results.BadRequest(new { message = "Вы уже авторизованы. Сначала выйдите из аккаунта." });
+                    return Results.Problem(
+                        detail: "Вы уже авторизованы. Сначала выйдите из аккаунта.",
+                        title: "Требуется выход из аккаунта",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 var existingEmail = await userManager.FindByEmailAsync(requestDto.Email);
                 if (existingEmail != null)
                 {
                     logger.Warning("Попытка регистрации на существующий Email: {Email}", requestDto.Email);
-                    return Results.BadRequest(new { message = "Пользователь с такой почтой уже существует" });
+                    return Results.Problem(
+                        detail: "Пользователь с такой почтой уже существует.",
+                        title: "Почта занята",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 var newUser = new User
@@ -66,9 +71,13 @@ namespace RentDrive.endpoints
                 var result = await userManager.CreateAsync(newUser, requestDto.Password);
                 if (!result.Succeeded)
                 {
-                    var errors = result.Errors.Select(e => e.Description);
+                    var errors = result.Errors.ToDictionary(e => e.Code, e => e.Description);
                     logger.Warning("Ошибка при регистрации пользователя: {@errors}", errors);
-                    return Results.BadRequest(new { message = "Ошибка при регистрации пользователя", errors });
+                    return Results.Problem(
+                        detail: $"Ошибка при регистрации пользователя: {errors}.",
+                        title: "Ошибка регистрации",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 await userManager.AddToRoleAsync(newUser, "Customer");
@@ -91,6 +100,7 @@ namespace RentDrive.endpoints
             {
                 var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
                 await singInManager.SignOutAsync();
+
                 logger.Information("Пользователь вышел из аккаунта. Id: {Id}", userId);
                 return Results.Ok(new { message = "Успешный выход из системы" });
             }).RequireAuthorization();
@@ -103,7 +113,11 @@ namespace RentDrive.endpoints
 
             authGroup.MapGet("/access-denied", () =>
             {
-                return Results.Json(new { message = "Доступ запрещен" }, statusCode: StatusCodes.Status403Forbidden);
+                return Results.Problem(
+                    detail: "Доступ запрещен.",
+                    title: "Доступ запрещен.",
+                    statusCode: StatusCodes.Status403Forbidden
+                );
             });
 
 
@@ -115,7 +129,11 @@ namespace RentDrive.endpoints
                 if (existingEmail != null)
                 {
                     logger.Warning("Попытка создать аминистратора с существующим Email: {Email}", existingEmail.Email);
-                    return Results.BadRequest(new { message = "Пользователь с такой почтой уже существует" });
+                    return Results.Problem(
+                        detail: "Пользователь с такой почтой уже существует.",
+                        title: "Почта занята",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 var admin = new User
@@ -127,9 +145,13 @@ namespace RentDrive.endpoints
                 var result = await userManager.CreateAsync(admin, requestDto.Password);
                 if (!result.Succeeded)
                 {
-                    var errors = result.Errors.Select(e => e.Description);
+                    var errors = result.Errors.ToDictionary(e => e.Code, e => e.Description);
                     logger.Error("Ошибка создания администратора: {@errors}", errors);
-                    return Results.BadRequest(new { message = "Не удалось создать администратора", errors });
+                    return Results.Problem(
+                        detail: $"Не удалось создать администратора: {errors}.",
+                        title: "Не удалось создать администратора",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
                 await userManager.AddToRoleAsync(admin, "Admin");
@@ -158,33 +180,58 @@ namespace RentDrive.endpoints
                 if (user == null)
                 {
                     logger.Warning("Попытка удалить несуществующего пользователя с id: {id}.", id);
-                    return Results.NotFound(new { error = "Пользователь не найден" });
+                    return Results.Problem(
+                        detail: "Пользователь не найден.",
+                        title: "Пользователь не найден",
+                        statusCode: StatusCodes.Status404NotFound
+                    );
                 }
 
                 bool hasActiveOrders = await context.Bookings.AnyAsync(b =>
                    b.Status == BookingStatus.Active &&
                    (b.CustomerId == user.Id || b.RentItem.OwnerId == user.Id));
 
-                if(hasActiveOrders)
+                if (hasActiveOrders)
                 {
                     logger.Warning("Попытка удалить аккаунт с активной бронью, {Id}", user.Id);
-                    return Results.BadRequest("Нельзя удалить аккаунт, пока у вас есть активные процессы аренды.");
+                    return Results.Problem(
+                        detail: "Нельзя удалить аккаунт, пока у вас есть активные процессы аренды.",
+                        title: "Нельзя удалить аккаунт",
+                        statusCode: StatusCodes.Status400BadRequest
+                    );
                 }
 
-                await context.Bookings
-                   .Where(b => b.CustomerId == user.Id && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed))
-                   .ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, BookingStatus.Cancelled));
+                var transaction = await context.Database.BeginTransactionAsync();
 
-                var result = await userManager.DeleteAsync(user);
-                if (!result.Succeeded)
+                try
                 {
-                    logger.Error("Ошибка при удалении пользователя: {@error}", result.Errors);
-                    return Results.InternalServerError(result.Errors);
+                    await context.Bookings
+                       .Where(b => b.CustomerId == user.Id && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed))
+                       .ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, BookingStatus.Cancelled));
+
+                    var result = await userManager.DeleteAsync(user);
+                    if (!result.Succeeded)
+                    {
+                        var errors = result.Errors.ToDictionary(e => e.Code, e => e.Description);
+                        logger.Error("Ошибка при удалении пользователя: {@error}", errors);
+                        return Results.Problem(
+                            detail: $"Ошибка удаления пользователя: {errors}.",
+                            title: "Ошибка удаления пользователя",
+                            statusCode: StatusCodes.Status500InternalServerError
+                        );
+                    }
+
+                    await transaction.CommitAsync();
+
+                    await detachQueue.Enqueue(user.Id);
+
+                    return Results.NoContent();
                 }
-
-                await detachQueue.Enqueue(user.Id);
-
-                return Results.NoContent();
+                catch (Exception)
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }).RequireAuthorization("AdminOnly");
 
             return app;

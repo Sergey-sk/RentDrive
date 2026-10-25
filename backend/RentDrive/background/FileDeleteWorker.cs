@@ -22,7 +22,7 @@ namespace RentDrive.background
 
             try
             {
-                await foreach(var filePaths in _deleteQueue.Reader.ReadAllAsync())
+                await foreach(var filePaths in _deleteQueue.Reader.ReadAllAsync(stoppingToken))
                 {
                     try
                     {
@@ -37,6 +37,16 @@ namespace RentDrive.background
                     {
                         _logger.Error(ex, "Ошибка при удалении пакета файлов: {@FilePaths}.", filePaths);
                     }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                while (_deleteQueue.Reader.TryRead(out var remainingFiles))
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var fileService = scope.ServiceProvider.GetRequiredService<IFileService>();
+
+                    await fileService.RemoveImageAsync(remainingFiles);
                 }
             }
             catch(Exception ex)

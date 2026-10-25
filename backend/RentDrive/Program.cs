@@ -50,6 +50,9 @@ builder.Services.AddIdentityApiEndpoints<User>(options =>
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestDtoValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<CompleteProfileDtoValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<ChangeFirstLastNameDtoValidator>();
@@ -86,6 +89,8 @@ builder.Services.AddHostedService<DatabaseImagesCleanupWorker>();
 builder.Services.AddHostedService<BookingStatusWorker>();
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {

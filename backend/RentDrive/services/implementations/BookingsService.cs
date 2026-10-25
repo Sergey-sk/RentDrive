@@ -102,6 +102,7 @@ namespace RentDrive.services.implementations
                 .FirstOrDefaultAsync(i => i.Id == itemId) ?? throw new ArgumentException("Объявление не найдено.");
 
             if (rentItem.OwnerId == userId) throw new ArgumentException("Нельзя забронировать свой товар.");
+            if(rentItem.IsDeleted) throw new ArgumentException("Объявление удалено.");
 
             bool isOverlap = await _context.Bookings.AnyAsync(b =>
                 b.RentItemId == itemId &&
@@ -193,7 +194,7 @@ namespace RentDrive.services.implementations
                     "pending" => query.Where(b => b.Status == BookingStatus.Pending),
                     "confirmed" => query.Where(b => b.Status == BookingStatus.Confirmed),
                     "active" => query.Where(b => b.Status == BookingStatus.Active),
-                    "complited" => query.Where(b => b.Status == BookingStatus.Completed),
+                    "completed" => query.Where(b => b.Status == BookingStatus.Completed),
                     "cancelled" => query.Where(b => b.Status == BookingStatus.Cancelled),
                     _ => query
                 };
