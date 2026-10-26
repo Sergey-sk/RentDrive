@@ -8,12 +8,12 @@ using RentDrive.db;
 using RentDrive.db.models;
 using RentDrive.dto.accountDto;
 using RentDrive.dto.authDto;
-using RentDrive.dto.bookingsDto;
 using RentDrive.endpoints;
 using RentDrive.services.implementations;
 using RentDrive.services.interfaces;
 using Scalar.AspNetCore;
 using Serilog;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +22,15 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 builder.Host.UseSerilog();
+
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration.GetConnectionString("Redis");
+    options.InstanceName = "RentDrive:";
+});
+
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+    ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("Redis")!));
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {

@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
 using RentDrive.db.models;
 using RentDrive.dto.itemsDto;
 using RentDrive.endpoints.filters;
@@ -21,9 +22,9 @@ namespace RentDrive.endpoints
             itemsGroup.MapGet("/", async (IItemsService itemsService,
                                     [AsParameters] ItemQueryParameters queryParams) =>
             {
-                var (items, pageCount, totalItems) = await itemsService.GetItemsAsync(queryParams);
+                var pagedItems = await itemsService.GetItemsAsync(queryParams);
 
-                return Results.Ok(new { items, totalCount = totalItems, totalPages = pageCount, queryParams.Page, queryParams.PageSize });
+                return Results.Ok(new { pagedItems.Items, totalCount = pagedItems.TotalItems, totalPages = pagedItems.PageCount, queryParams.Page, queryParams.PageSize });
             });
 
             itemsGroup.MapGet("/{id}", async (int id, IItemsService itemsService) =>
@@ -59,9 +60,9 @@ namespace RentDrive.endpoints
                     );
                 }
 
-                var (items, pageCount, totalItems) = await itemsService.GetUserItemsAsync(userId, queryParams);
+                var pagedItems = await itemsService.GetUserItemsAsync(userId, queryParams);
 
-                return Results.Ok(new { items, totalCount = totalItems, totalPages = pageCount, queryParams.Page, queryParams.PageSize });
+                return Results.Ok(new { pagedItems.Items, totalCount = pagedItems.TotalItems, totalPages = pagedItems.PageCount, queryParams.Page, queryParams.PageSize });
             }).RequireAuthorization();
 
             var createEndpoint = itemsGroup.MapPost("/", async ([AsParameters] CreateRentItemDto createDto,

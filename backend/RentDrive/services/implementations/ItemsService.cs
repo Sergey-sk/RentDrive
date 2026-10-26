@@ -1,9 +1,13 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using RentDrive.db;
 using RentDrive.db.models;
 using RentDrive.dto.itemsDto;
 using RentDrive.services.interfaces;
 using Serilog;
+using Serilog.Core;
+using StackExchange.Redis;
+using System.Text.Json;
 
 namespace RentDrive.services.implementations
 {
@@ -12,18 +16,50 @@ namespace RentDrive.services.implementations
         private readonly ApplicationDbContext _context;
         private readonly IFileService _fileService;
         private readonly IDeleteQueue<List<string>> _deleteQueue;
+        private readonly IDistributedCache _cache;
+        private readonly IDatabase _redis;
         private readonly Serilog.ILogger _logger = Log.ForContext<ItemsService>();
 
-        public ItemsService(ApplicationDbContext context, IFileService fileService, IDeleteQueue<List<string>> deleteQueue)
+        public ItemsService(ApplicationDbContext context,
+                            IFileService fileService,
+                            IDeleteQueue<List<string>> deleteQueue,
+                            IDistributedCache cache,
+                            IConnectionMultiplexer redis)
         {
             _context = context;
             _fileService = fileService;
             _deleteQueue = deleteQueue;
+            _cache = cache;
+            _redis = redis.GetDatabase();
         }
 
-        public async Task<(List<RentItemDto> items, int pageCount, int totalItems)> GetItemsAsync(ItemQueryParameters queryParams)
+        private const string CachePrefix = "catalog:items:";
+        private const string CacheItemPrefix = "item:";
+        private const string VersionKey = "catalog:version_counter";
+
+        public async Task<PagedItemsDto> GetItemsAsync(ItemQueryParameters queryParams)
         {
-            var query = _context.RentItems.Include(i => i.Owner).AsQueryable();
+            long currentVersion = (long)await _redis.StringGetAsync(VersionKey);
+
+            string cacheKey = $"{CachePrefix}v_{currentVersion}:page={queryParams.Page}:size={queryParams.PageSize}:search={queryParams.Search}:min={queryParams.MinPrice}:max={queryParams.MaxPrice}:sort={queryParams.SortBy}:{queryParams.SortDirection}";
+
+            string? cachedJson = await _cache.GetStringAsync(cacheKey);
+
+            if(!string.IsNullOrWhiteSpace(cachedJson))
+            {
+                _logger.Information("Данные каталога успешно получены из кэша Redis по ключу: {CacheKey}", cacheKey);
+
+                var pagedData = JsonSerializer.Deserialize<PagedItemsDto>(cachedJson);
+                if(pagedData != null)
+                    return pagedData;
+            }
+
+            _logger.Information("Кэш пуст. Выполняется запрос к СУБД MySQL для ключа: {CacheKey}", cacheKey);
+
+            var query = _context.RentItems
+                .AsNoTracking()
+                .Include(i => i.Owner)
+                .AsQueryable();
 
             query = GetSortedList(query, queryParams);
 
@@ -40,12 +76,29 @@ namespace RentDrive.services.implementations
 
             var itemsDto = pagedEntities.Select(i => RentItemDto.ToDto(i)).ToList();
 
-            return (itemsDto, pageCount, totalItems);
+            var pagedItems = new PagedItemsDto
+            {
+                Items = itemsDto,
+                PageCount = pageCount,
+                TotalItems = totalItems,
+            };
+
+            var jsonToCache = JsonSerializer.Serialize(pagedItems);
+
+            var cacheOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+            };
+
+            await _cache.SetStringAsync(cacheKey, jsonToCache, cacheOptions);
+
+            return pagedItems;
         }
 
-        public async Task<(List<RentItemDto> items, int pageCount, int totalItems)> GetUserItemsAsync(string userId, ItemQueryParameters queryParams)
+        public async Task<PagedItemsDto> GetUserItemsAsync(string userId, ItemQueryParameters queryParams)
         {
             var query = _context.RentItems
+                .AsNoTracking()
                 .Include(i => i.Owner)
                 .Where(i => i.OwnerId == userId)
                 .AsQueryable();
@@ -65,18 +118,51 @@ namespace RentDrive.services.implementations
 
             var itemsDto = pagedEntities.Select(i => RentItemDto.ToDto(i)).ToList();
 
-            return (itemsDto, pageCount, totalItems);
+            var pagedItems = new PagedItemsDto
+            {
+                Items = itemsDto,
+                PageCount = pageCount,
+                TotalItems = totalItems
+            };
+
+            return pagedItems;
         }
 
         public async Task<RentItemDto?> GetItemByIdAsync(int id)
         {
+            var cacheKey = $"{CacheItemPrefix}{id}";
+
+            string? cachedJson = await _cache.GetStringAsync(cacheKey);
+
+            if (!string.IsNullOrWhiteSpace(cachedJson))
+            {
+                _logger.Information("Объект взят из кэша");
+
+                var data = JsonSerializer.Deserialize<RentItemDto>(cachedJson);
+                if (data != null) return data;
+            }
+
+            _logger.Information("Объект взят из БД");
+
             var item = await _context.RentItems
+                .AsNoTracking()
                 .Include(ri => ri.Owner)
                 .FirstOrDefaultAsync(ri => ri.Id == id);
 
             if (item == null) return null;
 
-            return RentItemDto.ToDto(item);
+            var dtoItem = RentItemDto.ToDto(item);
+
+            var jsonCache = JsonSerializer.Serialize(dtoItem);
+
+            var cacheOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+            };
+
+            await _cache.SetStringAsync(cacheKey, jsonCache, cacheOptions);
+
+            return dtoItem;
         }
 
         public async Task<RentItemDto> CreateItemAsync(CreateRentItemDto createDto, User user)
@@ -100,6 +186,8 @@ namespace RentDrive.services.implementations
 
             _context.RentItems.Add(entity);
             await _context.SaveChangesAsync();
+
+            await _redis.StringIncrementAsync(VersionKey);
 
             _logger.Information("Объект с Id: {Id} успешно создан пользователем {UserId}", entity.Id, user.Id);
             return RentItemDto.ToDto(entity);
@@ -136,6 +224,10 @@ namespace RentDrive.services.implementations
             _context.RentItems.Update(item);
             await _context.SaveChangesAsync();
 
+            await _cache.RemoveAsync($"{CacheItemPrefix}{id}");
+
+            await _redis.StringIncrementAsync(VersionKey);
+
             _logger.Information("Объект с Id: {Id} успешно изменен пользователем {UserId}", item.Id, ownerId);
             return RentItemDto.ToDto(item);
         }
@@ -168,6 +260,10 @@ namespace RentDrive.services.implementations
 
             if (imagePaths != null && imagePaths.Count > 0)
                 await _deleteQueue.Enqueue(imagePaths);
+
+            await _cache.RemoveAsync($"{CacheItemPrefix}{id}");
+
+            await _redis.StringIncrementAsync(VersionKey);
 
             _logger.Information("Объект с Id: {Id} успешно удален пользователем {UserId}", id, ownerId);
             return true;
@@ -213,6 +309,8 @@ namespace RentDrive.services.implementations
 
             if (isDeletionSuccessful)
                 await _deleteQueue.Enqueue(imgUrls);
+
+            await _redis.StringIncrementAsync(VersionKey);
 
             _logger.Information("Успешное удаление всех объектов у пользователя Id: {Id}", ownerId);
             return true;
